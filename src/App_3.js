@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -19,22 +19,16 @@ import {
   updateDoc, 
   onSnapshot, 
   increment,
-  getDoc
 } from 'firebase/firestore';
 import { 
   Upload, 
-  Mic, 
   CheckCircle, 
   Download, 
   RefreshCw,
-  Image as ImageIcon,
   Volume2,
   Video,
   AlertCircle,
-  Sparkles,
-  Wand2,
   BrainCircuit,
-  FastForward,
   Lock,
   User,
   ShieldCheck,
@@ -89,13 +83,12 @@ const App = () => {
   const [image, setImage] = useState();
   const [text, setText] = useState("");
   const [selectedVoice, setSelectedVoice] = useState(VOICES[1].name);
-  const [selectedTone, setSelectedTone] = useState(TONES[7]);
+  const selectedTone = TONES[7];
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [selectedSpeed, setSelectedSpeed] = useState(SPEEDS[0]);
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
-  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState();
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
@@ -126,6 +119,7 @@ const App = () => {
       }
     });
     return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingDownload, finalVideoUrl]);
 
   // --- Usage Listener ---
@@ -161,6 +155,7 @@ const App = () => {
           await signInWithPopup(auth, provider);
           setShowAuthModal(false);
         } catch (signInErr) {
+          console.error(signInErr);
           setError("Sign-in failed. Please try again.");
         }
       } else if (err.code === 'auth/popup-blocked') {
@@ -275,27 +270,6 @@ const App = () => {
     return await response.json();
   };
 
-  const generateAIScript = async (fromImageOnly = false) => {
-    setIsGeneratingScript(true);
-    setError(undefined);
-    try {
-      let prompt = `Write a high-converting marketing ad script in ${selectedLanguage.label}. Tone: ${selectedTone}. `;
-      if (fromImageOnly) prompt += `Analyze this image and write 2 sentences of copy based on it.`;
-      else prompt += `Refine these notes: "${text}".`;
-      prompt += " Only output the script text.";
-      
-      const res = await callGemini(prompt, BRAIN_MODEL, false, fromImageOnly && image ? image : undefined);
-      if (res.error) throw new Error(res.message);
-      
-      const aiScript = res.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      setText(aiScript.replace(/```[a-z]*\n?/g, '').replace(/```/g, '').trim());
-    } catch (err) {
-      setError("Script generation failed.");
-    } finally {
-      setIsGeneratingScript(false);
-    }
-  };
-
   const generateAudio = async () => {
     if (!text.trim()) { setError("Please provide a script."); return; }
     
@@ -405,7 +379,11 @@ const App = () => {
         requestAnimationFrame(animate);
       };
       requestAnimationFrame(animate);
-    } catch (err) { setError("Video rendering failed."); setIsCreatingVideo(false); }
+    } catch (err) { 
+      console.error(err);
+      setError("Video rendering failed."); 
+      setIsCreatingVideo(false); 
+    }
   };
 
   return (
