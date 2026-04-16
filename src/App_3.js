@@ -83,7 +83,6 @@ const App = () => {
   const [image, setImage] = useState();
   const [text, setText] = useState("");
   const [selectedVoice, setSelectedVoice] = useState(VOICES[1].name);
-  const selectedTone = TONES[7];
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [selectedSpeed, setSelectedSpeed] = useState(SPEEDS[0]);
   
