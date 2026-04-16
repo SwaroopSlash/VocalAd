@@ -39,7 +39,7 @@ import {
 
 // --- PRODUCTION FIREBASE CONFIGURATION ---
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCzXZiB8PcB8-Fr7X9IdI_th8UfpodXM4E",
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCU4-sfVJUrz8iBsMKlvDdnzXu_UjoLD5s",
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "advocalize.firebaseapp.com",
   projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "advocalize",
   storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "advocalize.firebasestorage.app",
@@ -65,7 +65,6 @@ const VOICES = [
   { name: 'Zephyr', label: 'Zephyr (Male - Energetic)', type: 'male' },
 ];
 
-const TONES = ['Professional', 'Cheerful', 'Urgent (Sale)', 'Luxury', 'Friendly', 'Whispering', 'Excited', 'Trustworthy & Warm'];
 const LANGUAGES = [{ code: 'en', label: 'English' }, { code: 'mr', label: 'Marathi' }, { code: 'hi', label: 'Hindi' }];
 const SPEEDS = [
   { label: 'Normal (1.0x)', instruction: 'at a normal, natural pace' },
@@ -83,7 +82,6 @@ const App = () => {
   const [image, setImage] = useState();
   const [text, setText] = useState("");
   const [selectedVoice, setSelectedVoice] = useState(VOICES[1].name);
-  const selectedTone = TONES[7];
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [selectedSpeed, setSelectedSpeed] = useState(SPEEDS[0]);
   
