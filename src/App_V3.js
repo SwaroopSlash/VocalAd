@@ -408,8 +408,8 @@ const App = () => {
 
   const triggerDownload = (type) => {
     const a = document.createElement('a');
-    if (type === 'video' && finalVideoUrl) { a.href = finalVideoUrl; a.download = `VovalAd_${selectedRatio.id}.webm`; }
-    else if (type === 'audio' && audioUrl) { a.href = audioUrl; a.download = 'VovalAd_Master.wav'; }
+    if (type === 'video' && finalVideoUrl) { a.href = finalVideoUrl; a.download = `VocalAd_${selectedRatio.id}.webm`; }
+    else if (type === 'audio' && audioUrl) { a.href = audioUrl; a.download = 'VocalAd_Master.wav'; }
     else return;
     a.click();
   };
@@ -417,13 +417,13 @@ const App = () => {
   const getModalContent = () => {
     switch (modalReason) {
       case "voice_limit_free":
-        return { icon: <Volume2 className="w-8 h-8" />, title: "Voice Limit Reached", body: "You've used your 3 free voice attempts. Upgrade to Pro for unlimited experiments!" };
+        return { icon: <Volume2 className="w-8 h-8" />, title: "Voice Limit Reached", body: "You've used your 3 free voice attempts. Sign in or upgrade to explore unlimited possibilities!" };
       case "out_of_credits":
-        return { icon: <Video className="w-8 h-8" />, title: "Credits Exhausted", body: "You've run out of credits. Purchase more to continue creating high-impact ads." };
+        return { icon: <Video className="w-8 h-8" />, title: "Credits Exhausted", body: "You've run out of credits. Top up now to continue creating high-impact masterpieces." };
       case "download_lock":
-        return { icon: <Download className="w-8 h-8" />, title: "Claim Your Ad", body: "Create a free account to download and save your projects permanently." };
+        return { icon: <Download className="w-8 h-8" />, title: "Claim Your Masterpiece", body: "Your ad is ready! Create a free account to download and save your projects permanently." };
       default:
-        return { icon: <Lock className="w-8 h-8" />, title: "Restricted Access", body: "Please sign in or upgrade to continue." };
+        return { icon: <Sparkles className="w-8 h-8" />, title: "Welcome to VocalAd.ai", body: "Sign in to access your projects and explore our premium AI voice talent." };
     }
   };
 
@@ -436,6 +436,25 @@ const App = () => {
             <div className="w-20 h-20 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto">{getModalContent().icon}</div>
             <h3 className={`text-2xl font-black ${t.textHead}`}>{authMode === 'reset' ? "Reset Password" : getModalContent().title}</h3>
             <p className={`${t.textBody} text-sm`}>{authMode === 'reset' ? "We'll send a recovery link to your email." : getModalContent().body}</p>
+            
+            {authMode !== 'reset' && (
+              <button 
+                onClick={signInWithGoogle}
+                className="w-full py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg hover:bg-slate-100 transition-all border border-slate-200"
+              >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                Connect with Google
+              </button>
+            )}
+
+            {authMode !== 'reset' && (
+              <div className="flex items-center gap-4 py-2">
+                <div className="h-px bg-white/10 flex-1" />
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">or</span>
+                <div className="h-px bg-white/10 flex-1" />
+              </div>
+            )}
+
             <form onSubmit={handleEmailAuth} className="space-y-4">
               <input type="email" placeholder="Email Address" className={`w-full p-4 rounded-2xl outline-none border transition-all ${t.input}`} value={email} onChange={e => setEmail(e.target.value)} required />
               {authMode !== 'reset' && <input type="password" placeholder="Password" className={`w-full p-4 rounded-2xl outline-none border transition-all ${t.input}`} value={password} onChange={e => setPassword(e.target.value)} required />}
@@ -458,7 +477,7 @@ const App = () => {
               <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg transition-all ${t.accent}`}>
                  <Video className="w-5 h-5 md:w-6 md:h-6" />
               </div>
-              <h1 className={`text-lg md:text-2xl font-black tracking-tighter transition-all ${t.textHead}`}>VovalAd.ai</h1>
+              <h1 className={`text-lg md:text-2xl font-black tracking-tighter transition-all ${t.textHead}`}>VocalAd.ai</h1>
            </div>
 
            <div className="flex items-center gap-2 md:gap-4 relative" ref={dropdownRef}>
@@ -514,7 +533,7 @@ const App = () => {
                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 text-[10px] font-black uppercase tracking-[0.2em] mx-auto">
                         <Sparkles className="w-3 h-3" /> Voice Your Vision
                      </div>
-                     <h2 className={`text-5xl md:text-8xl font-black tracking-tighter transition-all leading-[0.9] ${t.textHead}`}>
+                     <h2 className={`text-5xl md:text-8xl font-black tracking-tighter transition-all leading-[1.1] md:leading-[0.9] ${t.textHead}`}>
                         Create high-impact AI voiceover <br className="hidden md:block"/> <span className="text-indigo-500">for your assets.</span>
                      </h2>
                      <p className={`text-lg md:text-2xl font-medium leading-relaxed max-w-2xl mx-auto transition-all ${t.textBody}`}>
@@ -524,7 +543,7 @@ const App = () => {
                         <button onClick={() => document.getElementById('imageInput').click()} className={`w-full sm:w-auto px-12 py-6 md:px-14 md:py-7 text-white rounded-[2rem] font-black text-lg md:text-xl shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-4 group ${t.accent}`}>
                            <Upload className="w-6 h-6 group-hover:animate-bounce" /> Get Started Now
                         </button>
-                        <div className={`flex items-center gap-4 px-6 py-4 rounded-2xl border transition-all ${t.nav}`}>
+                        <div className={`flex items-center gap-4 px-6 py-4 bg-white/5 rounded-2xl border transition-all ${t.nav}`}>
                            <div className="flex -space-x-3">
                               {[1,2,3].map(i => <div key={i} className={`w-8 h-8 rounded-full border-2 overflow-hidden flex items-center justify-center text-[10px] font-bold ${t.input}`}>U{i}</div>)}
                            </div>
@@ -690,7 +709,7 @@ const App = () => {
           {step === 4 && (
             <div className="text-center space-y-12 animate-in zoom-in-95 py-12 duration-700">
               <div className="w-24 h-24 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto border-2 border-green-500/20"><CheckCircle className="w-12 h-12" /></div>
-              <h2 className="text-6xl font-black tracking-tighter text-white">VovalAd Ready!</h2>
+              <h2 className="text-6xl font-black tracking-tighter text-white">VocalAd Ready!</h2>
               <div className="bg-black p-4 rounded-[4rem] max-w-sm mx-auto shadow-2xl border-[12px] border-slate-900" style={{ aspectRatio: selectedRatio.ratio }}>
                 {finalVideoUrl && <video controls autoPlay className="w-full h-full rounded-[2.5rem]" src={finalVideoUrl} />}
               </div>
@@ -706,7 +725,7 @@ const App = () => {
       
       {/* Footer Branding */}
       <div className="mt-12 text-center pb-12">
-         <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.4em]">Powered by Gemini 1.5 & VovalAd AI Engine</p>
+         <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.4em]">Powered by Gemini 1.5 & VocalAd AI Engine</p>
       </div>
     </div>
   );
