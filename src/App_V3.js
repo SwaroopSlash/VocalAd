@@ -63,7 +63,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'advocalize-pro-v2';
 
-const BRAIN_MODEL = "gemini-1.5-flash-latest"; 
+const BRAIN_MODEL = "gemini-2.5-flash-lite"; 
 const VOICE_MODEL = "gemini-3.1-flash-tts-preview"; 
 
 const RATIOS = [
@@ -230,7 +230,14 @@ const App = () => {
       if (user?.isAnonymous) await linkWithPopup(user, provider);
       else await signInWithPopup(auth, provider);
       setShowAuthModal(false);
-    } catch (err) { setError("Google Auth restricted in this environment."); }
+    } catch (err) { 
+      console.error(err);
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+        setError("Login popup was blocked or cancelled. Please try again or use email.");
+      } else {
+        setError(err.message || "Google Auth failed. Please use Email login.");
+      }
+    }
   };
 
   const handleEmailAuth = async (e) => {
@@ -309,9 +316,9 @@ const App = () => {
     setIsGeneratingAudio(true); 
     setLocalVoiceCount(prev => prev + 1);
     setAudioProgress(20); 
-    setStatusMessage("Polishing Script...");
+    setStatusMessage("Analyzing Dialect...");
     try {
-      const res1 = await callGemini(`Refine this for commercial voiceover with a ${selectedTone} tone: "${text}". Speed: ${selectedSpeed.instruction}. Output ONLY plain text.`, BRAIN_MODEL);
+      const res1 = await callGemini(`Refine this for commercial voiceover with a ${selectedTone} tone. CRITICAL: Identify and preserve the original language and regional dialect exactly. Do not translate. Output ONLY plain text. Text: "${text}"`, BRAIN_MODEL);
       const refinedScript = res1.error ? text : res1.candidates?.[0]?.content?.parts?.[0]?.text;
       
       setAudioProgress(60); setStatusMessage("AI Talent: Recording...");
@@ -342,15 +349,25 @@ const App = () => {
   const generateMagicScript = async () => {
     if (!magicPrompt.trim()) return;
     setIsGeneratingScript(true);
+    setError(null);
     try {
-      const prompt = `You are an expert ad copywriter. Based on this description "${magicPrompt}", write a high-converting commercial script for a 15-second ad. Max 40 words. Output ONLY the plain script text without any labels or instructions.`;
+      const prompt = `You are an expert ad copywriter. Based on this description "${magicPrompt}", write a high-converting commercial script for a 15-second ad. Max 40 words. Output ONLY the plain script text without any labels or instructions. Do NOT use markdown.`;
       const res = await callGemini(prompt, BRAIN_MODEL);
-      const generated = res.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      
+      if (res.error) throw new Error(res.message || "AI was unable to generate a script.");
+      
+      let generated = res.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      // Clean markdown if any
+      generated = generated.replace(/```[a-z]*\n?|```/gi, '').trim();
+      
+      if (!generated) throw new Error("Received empty script from AI.");
+      
       setText(generated);
       setShowMagicWand(false);
       setMagicPrompt("");
+      if (image) setStep(2); 
     } catch (err) {
-      setError("Failed to generate script. Please try again.");
+      setError(err.message);
     } finally {
       setIsGeneratingScript(false);
     }
@@ -584,11 +601,11 @@ const App = () => {
                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 text-[10px] font-black uppercase tracking-[0.2em] mx-auto">
                         <Sparkles className="w-3 h-3" /> Voice Your Vision
                      </div>
-                     <h2 className={`text-5xl md:text-8xl font-black tracking-tighter transition-all leading-[1.1] md:leading-[0.9] ${t.textHead}`}>
+                     <h2 className={`text-5xl md:text-8xl font-black tracking-tighter transition-all leading-[1.3] md:leading-[0.9] ${t.textHead}`}>
                         Create high-impact AI voiceover <br className="hidden md:block"/> <span className="text-indigo-500">for your assets.</span>
                      </h2>
                      <p className={`text-lg md:text-2xl font-medium leading-relaxed max-w-2xl mx-auto transition-all ${t.textBody}`}>
-                        Transform static images, GIFs, and videos into conversion-ready ads with professional AI voice talent and script refinement.
+                        Create high-impact voiceover for your assets: images, GIFs, and videos.
                      </p>
                      <div className="flex flex-col items-center gap-6 pt-4">
                         <button onClick={() => document.getElementById('imageInput').click()} className={`w-full sm:w-auto px-12 py-6 md:px-14 md:py-7 text-white rounded-[2rem] font-black text-lg md:text-xl shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-4 group ${t.accent}`}>
