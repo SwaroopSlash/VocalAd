@@ -1,54 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
   signInWithPopup,
-  linkWithPopup,
   GoogleAuthProvider,
-  onAuthStateChanged,
-  signOut,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  EmailAuthProvider,
-  linkWithCredential
+  onAuthStateChanged 
 } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
   setDoc, 
   updateDoc, 
-  onSnapshot,
-  increment
+  onSnapshot, 
+  increment,
+  getDoc 
 } from 'firebase/firestore';
 import { 
+  Upload, 
+  Mic, 
   CheckCircle, 
+  Download, 
   RefreshCw,
+  Image as ImageIcon,
   Volume2,
   Video,
   AlertCircle,
+  Sparkles,
+  Wand2,
   BrainCircuit,
+  FastForward,
   Lock,
   User,
   ShieldCheck,
   Zap,
   ChevronRight,
-  Mail,
-  Play,
-  Upload,
-  Download
+  Mail
 } from 'lucide-react';
 
 // --- PRODUCTION FIREBASE CONFIGURATION ---
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID,
-  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyCU4-sfVJUrz8iBsMKlvDdnzXu_UjoLD5s",
+  authDomain: "advocalize.firebaseapp.com",
+  projectId: "advocalize",
+  storageBucket: "advocalize.firebasestorage.app",
+  messagingSenderId: "911571947699",
+  appId: "1:911571947699:web:e7f9b1a14f8c897441e0c6",
+  measurementId: "G-3ZVPLWKZ6L"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -56,8 +54,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'advocalize-pro-v2';
 
-const BRAIN_MODEL = "gemini-1.5-flash-latest"; 
-const VOICE_MODEL = "gemini-3.1-flash-tts-preview"; 
+const BRAIN_MODEL = "gemini-2.5-flash-preview-09-2025"; 
+const VOICE_MODEL = "gemini-2.5-flash-preview-tts"; 
 
 const VOICES = [
   { name: 'Kore', label: 'Kore (Male - Professional)', type: 'male' },
@@ -86,26 +84,21 @@ const App = () => {
   const [image, setImage] = useState(null);
   const [text, setText] = useState("");
   const [selectedVoice, setSelectedVoice] = useState(VOICES[1].name);
+  const [selectedTone, setSelectedTone] = useState(TONES[7]);
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]);
   const [selectedSpeed, setSelectedSpeed] = useState(SPEEDS[0]);
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [finalVideoUrl, setFinalVideoUrl] = useState(null);
   const [error, setError] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
-  const [pendingDownload, setPendingDownload] = useState(false);
-  const [authMode, setAuthMode] = useState('signup'); // 'signup', 'login', 'reset'
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [authMessage, setAuthMessage] = useState('');
 
-  // Gemini API key from environment
-  const apiKey = process.env.REACT_APP_GEMINI_API_KEY; 
+  const apiKey = ""; // Injected by platform environment
 
   // --- Auth logic ---
   useEffect(() => {
@@ -114,36 +107,10 @@ const App = () => {
         await signInAnonymously(auth);
       } else {
         setUser(u);
-        
-        // Save/Update user profile in Firestore
-        if (!u.isAnonymous) {
-          const profileRef = doc(db, 'artifacts', appId, 'users', u.uid);
-          await setDoc(profileRef, { 
-            email: u.email, 
-            lastLogin: new Date().toISOString(),
-            uid: u.uid 
-          }, { merge: true });
-        }
-
-        if (pendingDownload && !u.isAnonymous && finalVideoUrl) {
-          triggerDownload();
-          setPendingDownload(false);
-        }
       }
     });
     return () => unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingDownload, finalVideoUrl]);
-
-  // --- Draft Persistence ---
-  useEffect(() => {
-    const savedText = localStorage.getItem('advocalize_draft_text');
-    if (savedText) setText(savedText);
   }, []);
-
-  useEffect(() => {
-    if (text) localStorage.setItem('advocalize_draft_text', text);
-  }, [text]);
 
   // --- Usage Listener ---
   useEffect(() => {
@@ -160,51 +127,12 @@ const App = () => {
   }, [user]);
 
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
     try {
-      if (user && user.isAnonymous) {
-        await linkWithPopup(user, provider);
-      } else {
-        await signInWithPopup(auth, provider);
-      }
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
       setShowAuthModal(false);
     } catch (err) {
-      console.error("Auth error:", err);
-      if (err.code === 'auth/credential-already-in-use') {
-        try {
-          await signInWithPopup(auth, provider);
-          setShowAuthModal(false);
-        } catch (signInErr) {
-          setError("Sign-in failed. Please try again.");
-        }
-      } else {
-        setError("Note: Google Auth may be restricted in some preview environments.");
-      }
-    }
-  };
-
-  const handleEmailAuth = async (e) => {
-    e.preventDefault();
-    setAuthError("");
-    setAuthMessage("");
-    try {
-      if (authMode === 'signup') {
-        if (user && user.isAnonymous) {
-          const credential = EmailAuthProvider.credential(email, password);
-          await linkWithCredential(user, credential);
-        } else {
-          await createUserWithEmailAndPassword(auth, email, password);
-        }
-        setShowAuthModal(false);
-      } else if (authMode === 'login') {
-        await signInWithEmailAndPassword(auth, email, password);
-        setShowAuthModal(false);
-      } else if (authMode === 'reset') {
-        await sendPasswordResetEmail(auth, email);
-        setAuthMessage("Password reset link sent! Check your inbox.");
-      }
-    } catch (err) {
-      setAuthError(err.message);
+      setError("Note: Google Popup may be blocked in some previews. Use a local environment for full Google Auth testing.");
     }
   };
 
@@ -215,38 +143,12 @@ const App = () => {
     setShowAuthModal(false);
   };
 
-  const handleSignOut = async () => {
-    await signOut(auth);
-  };
-
-  const triggerDownload = () => {
-    if (!finalVideoUrl) return;
-    const a = document.createElement('a');
-    a.href = finalVideoUrl;
-    a.download = 'AdVocalize_Commercial.webm';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  const handleDownloadClick = (e) => {
-    if (user && user.isAnonymous) {
-      e.preventDefault();
-      setPendingDownload(true);
-      setModalReason("signup");
-      setAuthMode("signup");
-      setShowAuthModal(true);
-    } else if (finalVideoUrl) {
-      triggerDownload();
-    }
-  };
-
   const pcmToWav = (pcmBuffer, sampleRate) => {
     const dataLength = pcmBuffer.byteLength;
     const buffer = new ArrayBuffer(44 + dataLength);
     const view = new DataView(buffer);
-    const writeString = (offset, str) => {
-      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    const writeString = (offset, string) => {
+      for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
     };
     writeString(0, 'RIFF'); view.setUint32(4, 36 + dataLength, true); writeString(8, 'WAVE');
     writeString(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
@@ -272,22 +174,23 @@ const App = () => {
       })
     };
 
-    try {
-      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!response.ok) {
-        const err = await response.json();
-        return { error: true, status: response.status, message: err.error?.message };
-      }
-      return await response.json();
-    } catch (err) {
-      return { error: true, status: 500, message: "Network error or API unavailable." };
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!response.ok) {
+      const err = await response.json();
+      return { error: true, status: response.status, message: err.error?.message };
     }
+    return await response.json();
   };
 
   const generateAudio = async () => {
     if (!text.trim()) { setError("Please provide a script."); return; }
+    
     const maxVideos = usage.tier === 'paid' ? 10 : 3;
-    if (usage.videoCount >= maxVideos) { setModalReason("limit"); setShowAuthModal(true); return; }
+    if (usage.videoCount >= maxVideos) {
+      setModalReason("limit");
+      setShowAuthModal(true);
+      return;
+    }
 
     setIsGeneratingAudio(true);
     setAudioProgress(10);
@@ -296,26 +199,23 @@ const App = () => {
 
     try {
       const res1 = await callGemini(`Refine this for commercial voiceover: "${text}". Language: ${selectedLanguage.label}. Speed: ${selectedSpeed.instruction}. Output ONLY plain text.`, BRAIN_MODEL);
-      
-      let refinedScript = text;
-      if (!res1.error) {
-        refinedScript = res1.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```[a-z]*\n?/g, '').replace(/```/g, '').trim();
-      }
+      if (res1.error) throw new Error(res1.message);
+      const refinedScript = res1.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```[a-z]*\n?/g, '').replace(/```/g, '').trim();
 
       setAudioProgress(40);
       setStatusMessage("AI Voice: Synthesizing mastered audio...");
 
       const res2 = await callGemini(refinedScript, VOICE_MODEL, true);
       
-      if (res2.error) {
-        // Fallback for TTS restrictions
+      // Fallback logic for environments without 2.5 TTS access
+      if (res2.status === 403 || res2.error) {
         const dummyWav = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
         const response = await fetch(dummyWav);
         const blob = await response.blob();
         setAudioUrl(URL.createObjectURL(blob));
         setAudioBlob(blob);
         setAudioProgress(100);
-        setError("Note: Real AI Voice is currently unavailable for your API tier. Using test placeholder audio.");
+        setError("Note: Gemini 2.5 TTS Preview is currently restricted for public API Keys. Using test placeholder.");
         setTimeout(() => { setIsGeneratingAudio(false); setAudioProgress(0); setStatusMessage(""); }, 2000);
         return;
       }
@@ -327,6 +227,20 @@ const App = () => {
       for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
 
       const blob = pcmToWav(bytes.buffer, sampleRate);
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+      const duration = audioBuffer.duration;
+
+      if (duration > 120) {
+        throw new Error("Enterprise Limit: Scripts over 2 minutes require an Enterprise Plan. Contact us to proceed.");
+      }
+      if (duration > 30 && usage.tier === 'free') {
+        setModalReason("duration");
+        setShowAuthModal(true);
+        setIsGeneratingAudio(false);
+        return;
+      }
+
       setAudioUrl(URL.createObjectURL(blob));
       setAudioBlob(blob);
       setAudioProgress(100);
@@ -359,12 +273,10 @@ const App = () => {
       const chunks = [];
       mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
       mediaRecorder.onstop = async () => {
-        const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
-        setFinalVideoUrl(url);
+        setFinalVideoUrl(URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })));
         const usageRef = doc(db, 'artifacts', appId, 'users', user.uid, 'usage', 'stats');
         await updateDoc(usageRef, { videoCount: increment(1) });
-        setIsCreatingVideo(false); 
-        setStep(4);
+        setIsCreatingVideo(false); setStep(4);
       };
       mediaRecorder.start(); audioSource.start();
       const startTime = performance.now();
@@ -376,10 +288,14 @@ const App = () => {
         requestAnimationFrame(animate);
       };
       requestAnimationFrame(animate);
-    } catch (err) { 
-      console.error(err);
-      setError("Video rendering failed."); 
-      setIsCreatingVideo(false); 
+    } catch (err) { setError("Video rendering failed."); setIsCreatingVideo(false); }
+  };
+
+  const handleDownloadClick = (e) => {
+    if (usage.tier === 'free') {
+      e.preventDefault();
+      setModalReason("download");
+      setShowAuthModal(true);
     }
   };
 
@@ -390,78 +306,28 @@ const App = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
           <div className="bg-slate-800 rounded-[2.5rem] p-10 max-w-sm w-full shadow-2xl text-center space-y-6 border border-slate-700">
             <div className="w-20 h-20 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto ring-8 ring-indigo-500/5">
-              {modalReason === "signup" ? <ShieldCheck className="w-10 h-10" /> : <Lock className="w-10 h-10" />}
+              {modalReason === "download" ? <ShieldCheck className="w-10 h-10" /> : <Lock className="w-10 h-10" />}
             </div>
-            
             <div className="space-y-2">
               <h3 className="text-2xl font-black text-white">
-                {modalReason === "limit" ? "Limit Reached" : modalReason === "duration" ? "Length Limit" : 
-                 authMode === 'signup' ? "Create Account" : authMode === 'login' ? "Welcome Back" : "Reset Password"}
+                {modalReason === "limit" ? "Limit Reached" : modalReason === "duration" ? "Length Limit" : "Unlock Download"}
               </h3>
               <p className="text-slate-400 text-sm">
-                {modalReason === "limit" ? "You've used all credits. Upgrade for ₹50 to get 10 HD exports!" : 
-                 modalReason === "signup" ? "Create a permanent account to download your HD commercial and save progress." : 
-                 "Sign in to continue."}
+                {modalReason === "limit" ? "You've used all credits. Upgrade for ₹50 to get 10 HD exports up to 2 minutes!" : 
+                 modalReason === "duration" ? "Free videos are capped at 30s. Upgrade to ₹50 for 2-minute ads!" : 
+                 "Sign up with Google to download your HD commercial and save your progress."}
               </p>
             </div>
-
-            <form onSubmit={handleEmailAuth} className="space-y-4">
-              {authMode !== 'reset' && (
-                <>
-                  <input 
-                    type="email" 
-                    placeholder="Email Address" 
-                    className="w-full p-4 bg-slate-900 border border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                  <input 
-                    type="password" 
-                    placeholder="Password" 
-                    className="w-full p-4 bg-slate-900 border border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </>
-              )}
-              {authMode === 'reset' && (
-                <input 
-                  type="email" 
-                  placeholder="Email Address" 
-                  className="w-full p-4 bg-slate-900 border border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              )}
-              
-              <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl hover:bg-indigo-500 transition-all">
-                {authMode === 'signup' ? "Create Account" : authMode === 'login' ? "Sign In" : "Send Reset Link"}
-              </button>
-            </form>
-
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700"></div></div>
-              <div className="relative flex justify-center text-xs uppercase"><span className="bg-slate-800 px-2 text-slate-500">Or continue with</span></div>
-            </div>
-
+            
             <button onClick={signInWithGoogle} className="w-full py-4 bg-white text-slate-900 rounded-2xl font-bold shadow-xl flex items-center justify-center gap-3 hover:bg-slate-100 transition-all active:scale-95">
-              <User className="w-5 h-5" /> Google
+              <User className="w-5 h-5" /> Sign in with Google
             </button>
 
-            <div className="flex justify-center gap-4 text-xs font-bold uppercase tracking-widest">
-              {authMode === 'signup' ? (
-                <button onClick={() => setAuthMode('login')} className="text-indigo-400">Login</button>
-              ) : (
-                <button onClick={() => setAuthMode('signup')} className="text-indigo-400">Sign Up</button>
-              )}
-              <button onClick={() => setAuthMode('reset')} className="text-slate-500">Forgot Password?</button>
-            </div>
-
-            {authError && <p className="text-red-400 text-xs font-bold">{authError}</p>}
-            {authMessage && <p className="text-green-400 text-xs font-bold">{authMessage}</p>}
+            {usage.tier === 'free' && (
+               <button onClick={handleUpgrade} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl flex items-center justify-center gap-2">
+                 <Zap className="w-5 h-5 fill-current" /> Buy 10 Credits (₹50)
+               </button>
+            )}
             
             <button onClick={() => setShowAuthModal(false)} className="text-slate-500 font-bold text-xs uppercase tracking-widest hover:text-slate-300">Close</button>
           </div>
@@ -470,31 +336,11 @@ const App = () => {
 
       <div className="max-w-5xl mx-auto bg-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-700">
         <div className="bg-indigo-600 p-10 text-white relative overflow-hidden">
-           <div className="absolute top-0 right-0 p-8 flex items-center gap-4">
+           <div className="absolute top-0 right-0 p-8">
             <div className="bg-black/20 backdrop-blur-xl px-5 py-2.5 rounded-full text-[10px] font-black tracking-widest border border-white/10 flex items-center gap-2">
               <ShieldCheck className="w-3.5 h-3.5 text-indigo-300" />
               {usage.tier === 'paid' ? "PREMIUM TIER" : "FREE TIER"} | {usage.tier === 'paid' ? Math.max(0, 10 - usage.videoCount) : Math.max(0, 3 - usage.videoCount)} LEFT
             </div>
-            
-            {user?.isAnonymous ? (
-              <button 
-                onClick={() => { setAuthMode('login'); setModalReason('signup'); setShowAuthModal(true); }}
-                className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-[10px] font-black tracking-widest border border-white/10 transition-all flex items-center gap-2"
-              >
-                <User className="w-3.5 h-3.5" /> SIGN IN
-              </button>
-            ) : (
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] font-black tracking-widest text-indigo-200 hidden sm:inline">{user?.email?.toUpperCase()}</span>
-                <button 
-                  onClick={handleSignOut} 
-                  className="bg-red-500/20 hover:bg-red-500/40 p-2 rounded-full transition-all border border-red-500/20 text-red-300"
-                  title="Sign Out"
-                >
-                  <User className="w-4 h-4" />
-                </button>
-              </div>
-            )}
           </div>
           <h1 className="text-4xl font-black tracking-tighter flex items-center gap-3">
             <Video className="w-10 h-10" /> AdVocalize Pro <span className="text-xs bg-white/20 px-2 py-1 rounded ml-2 uppercase tracking-widest">Version 2</span>
@@ -512,6 +358,11 @@ const App = () => {
               <AlertCircle className="w-6 h-6 flex-shrink-0" />
               <div className="space-y-1">
                 <p className="text-xs font-bold uppercase tracking-wider leading-relaxed">{error}</p>
+                {error.includes("Enterprise") && (
+                  <button className="text-[10px] bg-red-400 text-red-950 px-3 py-1 rounded-full font-black flex items-center gap-1 mt-2">
+                    <Mail className="w-3 h-3" /> Contact Sales
+                  </button>
+                )}
               </div>
             </div>
           )}
