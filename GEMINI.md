@@ -10,15 +10,19 @@
 - [x] Firebase Auth (Google & Email).
 - [x] Anonymous guest session linking.
 - [x] CRM: Saving user profiles (emails) to Firestore.
-- [x] **New:** Configuration Locking (Free users restricted to 1 voice/tone/speed).
-- [x] **New:** Tier-based Voice Generation Limits (3 for free, 5 then credit-based for pro).
-- [x] **New:** Granular Limit Modals (Explicit feedback for voice/credit/download limits).
+- [x] Configuration Locking (Free users restricted to 1 voice/tone/speed).
+- [x] Tier-based Voice Generation Limits (3 for free, 5 then credit-based for pro).
+- [x] Granular Limit Modals (Explicit feedback for voice/credit/download limits).
 - [x] Audio-Only download option (.wav).
 
 ## Stage 3: Economy (V3)
 - [x] Transition to `creditsRemaining` system (replacing `videoCount`).
-- [ ] **Next:** UPI Payment Modal (QR Code / Deep Links).
-- [ ] **Next:** Manual/Automatic payment verification logic.
+- [x] **New:** VocalAd.ai Branding & Professional UI.
+- [x] **New:** Fit vs. Fill Choice with Blurred Background fallback.
+- [ ] **Next:** AI Script Architect (Magic Wand tool for script generation).
+- [ ] **Next:** Mobile Ergonomics Pass (Above-the-fold previews & Logic-first layout).
+- [ ] UPI Payment Modal (QR Code / Deep Links).
+- [ ] Manual/Automatic payment verification logic.
 
 ## Testing & Quality Assurance
 - [ ] Build `AdVocalizeLab.js` for automated API & Renderer health checks.
@@ -27,5 +31,5 @@
 ## Design Philosophy
 - **Style over Specs:** Use "WhatsApp Style" instead of "Vertical 1080x1920".
 - **Safety First:** Strict `.env` usage, no hardcoded secrets.
-- **Draft Persistence:** Always save text to `localStorage`.
-- **Conversion Focused:** Clear "Pro" locking and granular limit feedback.
+- **Logic First:** Action buttons placed where the user needs them next.
+- **Frictionless:** AI-assisted script writing and mobile-first ergonomics.

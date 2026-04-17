@@ -42,7 +42,9 @@ import {
   LogOut,
   CreditCard,
   Settings,
-  Sparkles
+  Sparkles,
+  Wand2,
+  X
 } from 'lucide-react';
 
 // --- PRODUCTION FIREBASE CONFIGURATION ---
@@ -65,9 +67,9 @@ const BRAIN_MODEL = "gemini-1.5-flash-latest";
 const VOICE_MODEL = "gemini-3.1-flash-tts-preview"; 
 
 const RATIOS = [
-  { id: 'story', label: 'WhatsApp/Story', icon: Smartphone, width: 720, height: 1280, ratio: 9/16 },
-  { id: 'square', label: 'Instagram Post', icon: Square, width: 1080, height: 1080, ratio: 1/1 },
-  { id: 'cinema', label: 'Laptop/TV', icon: Monitor, width: 1280, height: 720, ratio: 16/9 },
+  { id: 'story', label: 'Story', icon: Smartphone, width: 720, height: 1280, ratio: 9/16 },
+  { id: 'square', label: 'Post', icon: Square, width: 1080, height: 1080, ratio: 1/1 },
+  { id: 'cinema', label: 'Cinema', icon: Monitor, width: 1280, height: 720, ratio: 16/9 },
 ];
 
 const VOICES = [
@@ -132,8 +134,12 @@ const App = () => {
   const [fitMode, setFitMode] = useState('cover'); // 'cover' or 'contain'
   const [selectedTone, setSelectedTone] = useState(TONES[0]);
   const [text, setText] = useState("");
-  const [selectedVoice, setSelectedVoice] = useState(VOICES[1].name);
+  const [selectedVoice, setSelectedVoice] = useState(VOICES[0].name); // Aoede (Female) Default
   const [selectedSpeed, setSelectedSpeed] = useState(SPEEDS[0]);
+
+  const [showMagicWand, setShowMagicWand] = useState(false);
+  const [magicPrompt, setMagicPrompt] = useState("");
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
@@ -333,6 +339,23 @@ const App = () => {
     } catch (err) { setError(err.message); setIsGeneratingAudio(false); }
   };
 
+  const generateMagicScript = async () => {
+    if (!magicPrompt.trim()) return;
+    setIsGeneratingScript(true);
+    try {
+      const prompt = `You are an expert ad copywriter. Based on this description "${magicPrompt}", write a high-converting commercial script for a 15-second ad. Max 40 words. Output ONLY the plain script text without any labels or instructions.`;
+      const res = await callGemini(prompt, BRAIN_MODEL);
+      const generated = res.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      setText(generated);
+      setShowMagicWand(false);
+      setMagicPrompt("");
+    } catch (err) {
+      setError("Failed to generate script. Please try again.");
+    } finally {
+      setIsGeneratingScript(false);
+    }
+  };
+
   const createVideo = async () => {
     if (!image || !audioBlob || !user) return;
     if (usage.creditsRemaining <= 0) { setModalReason("out_of_credits"); setShowAuthModal(true); return; }
@@ -429,6 +452,34 @@ const App = () => {
 
   return (
     <div className={`min-h-screen font-sans p-4 md:p-8 transition-colors duration-700 ${t.page}`}>
+      {/* Magic Wand Modal */}
+      {showMagicWand && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-lg">
+          <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full space-y-6 shadow-2xl relative">
+            <button onClick={() => setShowMagicWand(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
+            <div className="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mb-2"><Wand2 className="w-8 h-8" /></div>
+            <h3 className="text-3xl font-black text-white tracking-tight">Magic Script Architect</h3>
+            <p className="text-slate-400 text-sm">Describe your product or offer in a few words, and our AI will craft a high-converting 15-second ad script for you.</p>
+            <div className="space-y-4">
+              <textarea 
+                className="w-full p-6 bg-slate-800 border-2 border-slate-700 rounded-2xl outline-none text-white focus:border-indigo-500 h-32 transition-all" 
+                placeholder="e.g. A coffee shop offering 50% off on all lattes this weekend only."
+                value={magicPrompt}
+                onChange={e => setMagicPrompt(e.target.value)}
+              />
+              <button 
+                onClick={generateMagicScript}
+                disabled={isGeneratingScript || !magicPrompt.trim()}
+                className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg shadow-xl hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 transition-all flex items-center justify-center gap-3"
+              >
+                {isGeneratingScript ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                {isGeneratingScript ? "Drafting your Script..." : "Generate Magic Script"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Auth Modal */}
       {showAuthModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
@@ -541,7 +592,7 @@ const App = () => {
                      </p>
                      <div className="flex flex-col items-center gap-6 pt-4">
                         <button onClick={() => document.getElementById('imageInput').click()} className={`w-full sm:w-auto px-12 py-6 md:px-14 md:py-7 text-white rounded-[2rem] font-black text-lg md:text-xl shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-4 group ${t.accent}`}>
-                           <Upload className="w-6 h-6 group-hover:animate-bounce" /> Get Started Now
+                           <Upload className="w-6 h-6 group-hover:animate-bounce" /> Get Started by adding Asset
                         </button>
                         <div className={`flex items-center gap-4 px-6 py-4 bg-white/5 rounded-2xl border transition-all ${t.nav}`}>
                            <div className="flex -space-x-3">
@@ -564,29 +615,31 @@ const App = () => {
             <div className="space-y-8 md:space-y-10 animate-in slide-in-from-bottom-6 duration-700">
               <h2 className={`text-3xl md:text-4xl font-black tracking-tighter transition-all ${t.textHead}`}>1. Delivery Style</h2>
               
-              <div className="space-y-8 max-w-4xl mx-auto">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+              <div className="space-y-6 max-w-4xl mx-auto">
+                {/* Horizontal Ratios for Mobile Friendly */}
+                <div className="flex md:grid md:grid-cols-3 gap-3 md:gap-6 overflow-x-auto pb-4 md:pb-0 scrollbar-hide px-2">
                   {RATIOS.map(r => (
-                    <button key={r.id} onClick={() => setSelectedRatio(r)} className={`p-6 md:p-8 rounded-2xl md:rounded-3xl border-4 transition-all flex flex-col items-center gap-3 md:gap-4 ${selectedRatio.id === r.id ? 'border-indigo-500 bg-indigo-500/10' : `hover:border-indigo-300 ${t.input}`}`}>
-                      <r.icon className={`w-8 h-8 md:w-10 md:h-10 ${selectedRatio.id === r.id ? 'text-indigo-500' : ''}`} />
+                    <button key={r.id} onClick={() => setSelectedRatio(r)} className={`min-w-[120px] md:min-w-0 p-4 md:p-8 rounded-2xl md:rounded-3xl border-2 md:border-4 transition-all flex flex-col items-center gap-2 md:gap-4 flex-shrink-0 ${selectedRatio.id === r.id ? 'border-indigo-500 bg-indigo-500/10' : `hover:border-indigo-300 ${t.input}`}`}>
+                      <r.icon className={`w-6 h-6 md:w-10 md:h-10 ${selectedRatio.id === r.id ? 'text-indigo-500' : ''}`} />
                       <span className={`text-[10px] md:text-xs font-black uppercase tracking-widest ${selectedRatio.id === r.id ? 'text-indigo-500' : ''}`}>{r.label}</span>
                     </button>
                   ))}
                 </div>
 
-                {/* Fit Mode Switcher */}
-                <div className="flex justify-center items-center gap-4 bg-black/40 p-2 rounded-2xl w-fit mx-auto border border-white/5 shadow-inner">
-                    <button onClick={() => setFitMode('cover')} className={`px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${fitMode === 'cover' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Fill Screen</button>
-                    <button onClick={() => setFitMode('contain')} className={`px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${fitMode === 'contain' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Fit Entire Image</button>
+                {/* Compact Fit Mode Switcher */}
+                <div className="flex justify-center items-center gap-2 bg-black/40 p-1.5 rounded-xl md:rounded-2xl w-fit mx-auto border border-white/5 shadow-inner">
+                    <button onClick={() => setFitMode('cover')} className={`px-4 py-2 md:px-6 md:py-3 rounded-lg md:rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition-all ${fitMode === 'cover' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Fill Screen</button>
+                    <button onClick={() => setFitMode('contain')} className={`px-4 py-2 md:px-6 md:py-3 rounded-lg md:rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition-all ${fitMode === 'contain' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Fit Entire</button>
                 </div>
               </div>
 
-              <div className="relative mx-auto bg-black rounded-[2.5rem] md:rounded-[3rem] overflow-hidden shadow-2xl transition-all duration-700 border-4 md:border-8 border-slate-700" style={{ width: '240px', mdWidth: '280px', aspectRatio: selectedRatio.ratio }}>
+              {/* Above the fold Preview */}
+              <div className="relative mx-auto bg-black rounded-[2.5rem] md:rounded-[3rem] overflow-hidden shadow-2xl transition-all duration-700 border-4 md:border-8 border-slate-700" style={{ width: '200px', mdWidth: '280px', aspectRatio: selectedRatio.ratio }}>
                 {fitMode === 'contain' && <img src={image} className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-150" alt="Background" />}
                 <img src={image} className={`w-full h-full relative z-10 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} opacity-90`} alt="Preview" />
               </div>
 
-              <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-4 md:pt-8">
+              <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-2 md:pt-8">
                  <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] md:text-xs uppercase hover:text-indigo-500 transition-colors`}>Back</button>
                  <button onClick={() => setStep(2)} className={`px-8 py-4 md:px-12 md:py-5 text-white rounded-xl md:rounded-2xl font-black text-sm md:text-base flex items-center gap-2 shadow-xl transition-all ${t.accent}`}>Next: AI Talent <ChevronRight className="w-4 h-4 md:w-5 md:h-5" /></button>
               </div>
@@ -595,15 +648,31 @@ const App = () => {
 
           {step === 2 && (
             <div className="space-y-8 md:space-y-10 animate-in slide-in-from-bottom-10 duration-700">
-               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 text-left">
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-12 text-left">
                   <div className="space-y-4">
-                     <label className={`font-black tracking-wider text-[9px] md:text-[10px] uppercase ${t.textBody}`}>Script Polish</label>
-                     <textarea className={`w-full p-6 md:p-8 h-60 md:h-80 border-2 rounded-2xl md:rounded-3xl focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium placeholder-slate-600 shadow-inner ${t.input}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type your ad script here... AI will polish it for the perfect delivery." />
+                     <div className="flex items-center justify-between px-1">
+                        <label className={`font-black tracking-wider text-[9px] md:text-[10px] uppercase ${t.textBody}`}>Script Polish</label>
+                        <button 
+                           onClick={() => setShowMagicWand(true)}
+                           className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"
+                        >
+                           <Wand2 className="w-3 h-3" /> Magic Generator
+                        </button>
+                     </div>
+                     <textarea className={`w-full p-6 md:p-8 h-48 md:h-80 border-2 rounded-2xl md:rounded-3xl focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium placeholder-slate-600 shadow-inner ${t.input}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type your ad script here... AI will polish it for the perfect delivery." />
+                     
+                     {/* Logic-First: Generate Button right under textarea */}
+                     <button disabled={!text.trim() || isGeneratingAudio} onClick={generateAudio} className={`w-full py-5 text-white rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : t.accent}`}>
+                        {isGeneratingAudio ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Volume2 className="w-6 h-6" />}
+                        {isGeneratingAudio ? "Producing Voice..." : "Generate AI Voice"}
+                     </button>
                   </div>
+
                   <div className="space-y-6 md:space-y-8">
+                     <div className="px-1"><label className={`font-black tracking-wider text-[9px] md:text-[10px] uppercase ${t.textBody}`}>Fine-Tune Talent</label></div>
                      <div className="grid grid-cols-1 xs:grid-cols-2 gap-4 md:gap-6">
                         <div className="space-y-2">
-                           <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody}`}>Voice Tone</label>
+                           <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-60`}>Voice Tone</label>
                            <select className={`w-full p-3.5 md:p-4 border-2 rounded-xl md:rounded-2xl font-bold text-xs md:text-sm transition-all ${t.input}`} value={selectedTone} onChange={e => {
                               const isPro = usage.tier === 'paid';
                               const index = TONES.indexOf(e.target.value);
@@ -618,7 +687,7 @@ const App = () => {
                            </select>
                         </div>
                         <div className="space-y-2">
-                           <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody}`}>Speech Pace</label>
+                           <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-60`}>Speech Pace</label>
                            <select className={`w-full p-3.5 md:p-4 border-2 rounded-xl md:rounded-2xl font-bold text-xs md:text-sm transition-all ${t.input}`} value={selectedSpeed.label} onChange={e => {
                               const isPro = usage.tier === 'paid';
                               const speed = SPEEDS.find(s => s.label === e.target.value);
@@ -635,16 +704,16 @@ const App = () => {
                         </div>
                      </div>
                      <div className="space-y-2">
-                        <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-1 ${t.textBody}`}>AI Voice Talent</label>
-                        <div className={`max-h-52 md:max-h-60 overflow-y-auto border-2 p-2 rounded-2xl md:rounded-3xl transition-all ${t.nav}`}>
+                        <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-1 ${t.textBody} opacity-60`}>AI Voice Talent</label>
+                        <div className={`max-h-48 md:max-h-60 overflow-y-auto border-2 p-2 rounded-2xl md:rounded-3xl transition-all ${t.nav}`}>
                            {VOICES.map((v, idx) => {
-                              const isProFeature = idx !== 1;
+                              const isProFeature = idx !== 0; // Aoede is index 0 and is free
                               const isLocked = usage.tier !== 'paid' && isProFeature;
                               return (
                                  <button key={v.name} onClick={() => !isLocked && setSelectedVoice(v.name)} className={`w-full p-3.5 md:p-4 text-left rounded-xl border-2 text-xs md:text-sm font-bold transition-all mb-2 flex items-center justify-between ${isLocked ? 'opacity-40 cursor-not-allowed grayscale' : selectedVoice === v.name ? `${t.accent} text-white shadow-lg border-transparent` : `bg-transparent border-transparent ${t.textBody} hover:bg-black/5`}`}>
                                     <span className="flex items-center gap-2">
                                        {v.label}
-                                       {isLocked && <Lock className="w-3 h-3 text-amber-500" />}
+                                       {isLocked && <div className="flex items-center gap-1 bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded-full text-[8px]"><Lock className="w-2.5 h-2.5" /> PRO</div>}
                                     </span>
                                     {selectedVoice === v.name && !isLocked && <CheckCircle className="w-3.5 h-3.5 md:w-4 md:h-4" />}
                                  </button>
@@ -654,7 +723,8 @@ const App = () => {
                      </div>
                   </div>
                </div>
-               <div className="flex flex-col gap-6 pt-8 md:pt-10 border-t border-black/5">
+               
+               <div className="flex flex-col gap-6 pt-4 border-t border-black/5">
                   {isGeneratingAudio && (
                      <div className="space-y-4 max-w-xl mx-auto w-full">
                         <div className="flex justify-between items-center text-[9px] md:text-[10px] font-black text-indigo-500 uppercase tracking-widest">
@@ -666,20 +736,16 @@ const App = () => {
                         </div>
                      </div>
                   )}
+                  {audioUrl && !isGeneratingAudio && (
+                     <div className={`p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 md:gap-8 border-4 animate-in zoom-in-95 max-w-3xl mx-auto text-left shadow-2xl transition-all ${t.accent} text-white`}>
+                        <div className="flex-1 w-full"><p className="text-white/80 font-black text-[9px] md:text-[10px] tracking-widest uppercase mb-3 md:mb-4 px-2">Voiceover Preview</p><audio controls src={audioUrl} className="w-full h-10 md:h-12" /></div>
+                        <button onClick={() => setStep(3)} className="w-full md:w-auto bg-white text-indigo-600 px-8 py-4 md:px-10 md:py-5 rounded-xl md:rounded-2xl font-black text-sm md:text-base whitespace-nowrap hover:bg-slate-100 transition-all shadow-xl">Confirm & Mix</button>
+                     </div>
+                  )}
                   <div className="flex justify-between items-center max-w-2xl mx-auto w-full">
                      <button onClick={() => setStep(1)} className={`${t.textBody} font-black text-[10px] md:text-xs uppercase hover:text-indigo-500 transition-colors`}>Back</button>
-                     <button disabled={!text.trim() || isGeneratingAudio} onClick={generateAudio} className={`px-8 py-4 md:px-12 md:py-5 text-white rounded-xl md:rounded-2xl font-black text-sm md:text-base shadow-2xl flex items-center gap-3 md:gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : t.accent}`}>
-                        {isGeneratingAudio ? <RefreshCw className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Volume2 className="w-4 h-4 md:w-5 md:h-5" />}
-                        {isGeneratingAudio ? "Producing..." : "Generate AI Voice"}
-                     </button>
                   </div>
                </div>
-               {audioUrl && !isGeneratingAudio && (
-                  <div className={`p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 md:gap-8 border-4 animate-in zoom-in-95 max-w-3xl mx-auto text-left shadow-2xl transition-all ${t.accent} text-white`}>
-                     <div className="flex-1 w-full"><p className="text-white/80 font-black text-[9px] md:text-[10px] tracking-widest uppercase mb-3 md:mb-4 px-2">Voiceover Preview</p><audio controls src={audioUrl} className="w-full h-10 md:h-12" /></div>
-                     <button onClick={() => setStep(3)} className="w-full md:w-auto bg-white text-indigo-600 px-8 py-4 md:px-10 md:py-5 rounded-xl md:rounded-2xl font-black text-sm md:text-base whitespace-nowrap hover:bg-slate-100 transition-all shadow-xl">Confirm & Mix</button>
-                  </div>
-               )}
             </div>
           )}
 
