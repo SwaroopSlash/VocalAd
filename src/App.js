@@ -359,7 +359,7 @@ const App = () => {
     try {
       // Call our secure backend to create an Order
       const { getFunctions, httpsCallable } = await import('firebase/functions');
-      const functions = getFunctions(app);
+      const functions = getFunctions(app, 'us-central1'); // Explicitly set region
       const createOrder = httpsCallable(functions, 'createOrder');
       
       const orderData = await createOrder({ 
@@ -367,8 +367,12 @@ const App = () => {
         planId: selectedPlan.id 
       });
 
+      if (!orderData?.data?.orderId) {
+        throw new Error("No Order ID returned from server.");
+      }
+
       const options = {
-        key: "rzp_test_SepHmmnMPWs7qO", // Your Razorpay Test Key ID
+        key: process.env.REACT_APP_RAZORPAY_KEY_ID || "rzp_live_Ser2nmQxdpXWGm",
         amount: selectedPlan.price * 100,
         currency: "INR",
         name: "VocalAd AI",
@@ -380,7 +384,7 @@ const App = () => {
           // Actual credits are added by the Webhook (Part 2) for security
         },
         prefill: {
-          email: user.email,
+          email: user?.email || "",
         },
         theme: {
           color: "#4f46e5",
@@ -388,10 +392,14 @@ const App = () => {
       };
 
       const rzp1 = new window.Razorpay(options);
+      rzp1.on('payment.failed', function (response) {
+        setAuthError(`Payment failed: ${response.error.description}`);
+      });
       rzp1.open();
     } catch (err) {
-      console.error(err);
-      setAuthError("Failed to initiate secure checkout.");
+      console.error("Payment Initiation Error:", err);
+      // Show the specific error from Firebase or Razorpay
+      setAuthError(`Checkout Error: ${err.message || "Failed to initiate secure checkout."}`);
     } finally {
       setIsSubmittingPayment(false);
     }
