@@ -69,6 +69,7 @@ const BRAIN_MODEL = "gemini-2.5-flash-lite";
 const VOICE_MODEL = "gemini-3.1-flash-tts-preview"; 
 
 const PLANS = [
+  { id: 'dummy', label: 'Backend Test', credits: 0, price: 1.23, color: 'slate' },
   { id: 'single', label: 'Quick Top-up', credits: 1, price: 10, color: 'emerald' },
   { id: 'starter', label: 'Starter Pack', credits: 10, price: 99, color: 'indigo' },
   { id: 'pro', label: 'Creator Pro', credits: 50, price: 399, color: 'purple' },
@@ -364,7 +365,8 @@ const App = () => {
       
       const orderData = await createOrder({ 
         amount: selectedPlan.price, 
-        planId: selectedPlan.id 
+        planId: selectedPlan.id,
+        appId: appId 
       });
 
       if (!orderData?.data?.orderId) {
