@@ -1,13 +1,16 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import App from './App_V3';
+import App from './App';
+import AdVocalizeLab from './AdVocalizeLab';
 import reportWebVitals from './reportWebVitals';
 
+const isLabMode = window.location.search.includes('lab=true');
 const root = ReactDOM.createRoot(document.getElementById('root'));
+
 root.render(
   <React.StrictMode>
-    <App />
+    {isLabMode ? <AdVocalizeLab /> : <App />}
   </React.StrictMode>
 );
 
