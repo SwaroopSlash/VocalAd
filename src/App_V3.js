@@ -44,7 +44,9 @@ import {
   Settings,
   Sparkles,
   Wand2,
-  X
+  X,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 // --- PRODUCTION FIREBASE CONFIGURATION ---
@@ -63,8 +65,15 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'advocalize-pro-v2';
 
-const BRAIN_MODEL = "gemini-2.5-flash-lite"; 
+const BRAIN_MODEL = "gemini-2.5-pro"; 
 const VOICE_MODEL = "gemini-3.1-flash-tts-preview"; 
+
+const PLANS = [
+  { id: 'single', label: 'Quick Top-up', credits: 1, price: 10, color: 'emerald' },
+  { id: 'starter', label: 'Starter Pack', credits: 10, price: 99, color: 'indigo' },
+  { id: 'pro', label: 'Creator Pro', credits: 50, price: 399, color: 'purple' },
+  { id: 'agency', label: 'Agency Scale', credits: 200, price: 999, color: 'blue' },
+];
 
 const RATIOS = [
   { id: 'story', label: 'Story', icon: Smartphone, width: 720, height: 1280, ratio: 9/16 },
@@ -118,12 +127,14 @@ const App = () => {
   const [localVoiceCount, setLocalVoiceCount] = useState(0);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
   const dropdownRef = useRef(null);
   
   const [modalReason, setModalReason] = useState("limit");
   const [authMode, setAuthMode] = useState('signup'); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authMessage, setAuthMessage] = useState('');
 
@@ -151,6 +162,13 @@ const App = () => {
   const [statusMessage, setStatusMessage] = useState("");
   const [pendingDownloadType, setPendingDownloadType] = useState(null); 
 
+  // --- UPI Payment State ---
+  const [showUPIModal, setShowUPIModal] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(PLANS[0]);
+  const [showAllPlans, setShowAllPlans] = useState(false);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY; 
 
   // --- Clear Error on Step Change ---
@@ -173,14 +191,21 @@ const App = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) {
+        setUser(null);
         await signInAnonymously(auth);
       } else {
         setUser(u);
         if (!u.isAnonymous) {
           setShowAuthModal(false);
           const profileRef = doc(db, 'artifacts', appId, 'users', u.uid);
-          await setDoc(profileRef, { email: u.email, lastLogin: new Date().toISOString(), uid: u.uid }, { merge: true });
+          await setDoc(profileRef, { 
+            email: u.email, 
+            lastLogin: new Date().toISOString(), 
+            uid: u.uid,
+            displayName: u.displayName || "" 
+          }, { merge: true });
         }
+        
         if (pendingDownloadType && !u.isAnonymous) {
           triggerDownload(pendingDownloadType);
           setPendingDownloadType(null);
@@ -217,49 +242,156 @@ const App = () => {
           setUsage(data);
         }
       } else {
+        // Fresh Start: Initial 3 credits for new users
         setDoc(usageRef, { creditsRemaining: 3, tier: 'free', videoCount: 0, voiceSamples: 0 });
       }
-    });
+    }, (err) => console.error("Usage listener error:", err));
     return () => unsubscribe();
   }, [user]);
 
   // --- Auth Actions ---
   const signInWithGoogle = async () => {
+    setIsAuthLoading(true);
+    setAuthError("");
     const provider = new GoogleAuthProvider();
     try {
-      if (user?.isAnonymous) await linkWithPopup(user, provider);
-      else await signInWithPopup(auth, provider);
+      if (authMode === 'signup' && user?.isAnonymous) {
+        try {
+          await linkWithPopup(user, provider);
+        } catch (linkErr) {
+          // If account already exists, just sign in instead of linking
+          if (linkErr.code === 'auth/credential-already-in-use') {
+            await signInWithPopup(auth, provider);
+          } else throw linkErr;
+        }
+      } else {
+        await signInWithPopup(auth, provider);
+      }
       setShowAuthModal(false);
     } catch (err) { 
       console.error(err);
-      if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
-        setError("Login popup was blocked or cancelled. Please try again or use email.");
-      } else {
-        setError(err.message || "Google Auth failed. Please use Email login.");
-      }
+      setAuthError(err.code === 'auth/popup-blocked' ? "Login popup was blocked. Please enable popups." : err.message);
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
   const handleEmailAuth = async (e) => {
-    e.preventDefault(); setAuthError(""); setAuthMessage("");
+    e.preventDefault(); 
+    setIsAuthLoading(true);
+    setAuthError(""); 
+    setAuthMessage("");
     try {
       if (authMode === 'signup') {
-        if (user?.isAnonymous) await linkWithCredential(user, EmailAuthProvider.credential(email, password));
-        else await createUserWithEmailAndPassword(auth, email, password);
+        if (user?.isAnonymous) {
+          try {
+            const credential = EmailAuthProvider.credential(email, password);
+            await linkWithCredential(user, credential);
+          } catch (linkErr) {
+            if (linkErr.code === 'auth/email-already-in-use') {
+              setAuthError("Email already exists. Try logging in!");
+              setAuthMode('login');
+              setIsAuthLoading(false);
+              return;
+            } else throw linkErr;
+          }
+        } else {
+          await createUserWithEmailAndPassword(auth, email, password);
+        }
         setShowAuthModal(false);
       } else if (authMode === 'login') {
         await signInWithEmailAndPassword(auth, email, password);
         setShowAuthModal(false);
       } else if (authMode === 'reset') {
         await sendPasswordResetEmail(auth, email);
-        setAuthMessage("Reset link sent!");
+        setAuthMessage("Reset link sent! Please check your inbox.");
       }
-    } catch (err) { setAuthError(err.message); }
+    } catch (err) { 
+      let msg = err.message;
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        msg = authMode === 'login' 
+          ? "Incorrect email/password or account doesn't exist. Try Signing Up?" 
+          : "Invalid email or password format.";
+      }
+      if (err.code === 'auth/user-not-found') msg = "No account found with this email. Try Signing Up?";
+      setAuthError(msg); 
+    } finally {
+      setIsAuthLoading(false);
+    }
   };
 
-  const handleSignOut = () => {
-    signOut(auth);
-    setShowProfileDropdown(false);
+  const handleSignOut = async () => {
+    try {
+      setLocalVoiceCount(0); // Reset local count for next guest session
+      setAudioUrl(null);
+      setFinalVideoUrl(null);
+      await signOut(auth);
+      setShowProfileDropdown(false);
+    } catch (err) {
+      console.error("Sign out failed", err);
+    }
+  };
+
+  // --- Payment Actions ---
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleInitiatePayment = async () => {
+    const res = await loadRazorpayScript();
+    if (!res) {
+      setAuthError("Razorpay SDK failed to load. Check your internet.");
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+    setAuthError("");
+
+    try {
+      // Call our secure backend to create an Order
+      const { getFunctions, httpsCallable } = await import('firebase/functions');
+      const functions = getFunctions(app);
+      const createOrder = httpsCallable(functions, 'createOrder');
+      
+      const orderData = await createOrder({ 
+        amount: selectedPlan.price, 
+        planId: selectedPlan.id 
+      });
+
+      const options = {
+        key: "rzp_test_SepHmmnMPWs7qO", // Your Razorpay Test Key ID
+        amount: selectedPlan.price * 100,
+        currency: "INR",
+        name: "VocalAd AI",
+        description: `Credits for ${selectedPlan.label}`,
+        order_id: orderData.data.orderId,
+        handler: function (response) {
+          // This runs immediately after payment UI success
+          setPaymentSuccess(true);
+          // Actual credits are added by the Webhook (Part 2) for security
+        },
+        prefill: {
+          email: user.email,
+        },
+        theme: {
+          color: "#4f46e5",
+        },
+      };
+
+      const rzp1 = new window.Razorpay(options);
+      rzp1.open();
+    } catch (err) {
+      console.error(err);
+      setAuthError("Failed to initiate secure checkout.");
+    } finally {
+      setIsSubmittingPayment(false);
+    }
   };
 
   // --- Engine Actions ---
@@ -454,6 +586,16 @@ const App = () => {
     a.click();
   };
 
+  const handlePurchase = () => {
+    if (user?.isAnonymous) {
+      setModalReason("purchase_lock");
+      setAuthMode("signup");
+      setShowAuthModal(true);
+      return;
+    }
+    setShowUPIModal(true);
+  };
+
   const getModalContent = () => {
     switch (modalReason) {
       case "voice_limit_free":
@@ -462,6 +604,8 @@ const App = () => {
         return { icon: <Video className="w-8 h-8" />, title: "Credits Exhausted", body: "You've run out of credits. Top up now to continue creating high-impact masterpieces." };
       case "download_lock":
         return { icon: <Download className="w-8 h-8" />, title: "Claim Your Masterpiece", body: "Your ad is ready! Create a free account to download and save your projects permanently." };
+      case "purchase_lock":
+        return { icon: <CreditCard className="w-8 h-8" />, title: "Sign In to Upgrade", body: "Please create an account or login to purchase credits and unlock premium features." };
       default:
         return { icon: <Sparkles className="w-8 h-8" />, title: "Welcome to VocalAd.ai", body: "Sign in to access your projects and explore our premium AI voice talent." };
     }
@@ -469,6 +613,115 @@ const App = () => {
 
   return (
     <div className={`min-h-screen font-sans p-4 md:p-8 transition-colors duration-700 ${t.page}`}>
+      {/* UPI Payment Modal */}
+      {showUPIModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-lg animate-in fade-in duration-300">
+          <div className={`${t.dropdown} border border-white/10 rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full space-y-8 shadow-2xl relative transition-all duration-500 overflow-hidden`}>
+            {paymentSuccess && (
+              <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md z-[120] flex flex-col items-center justify-center gap-6 rounded-[2.5rem] animate-in fade-in zoom-in-95 duration-500">
+                <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center border-2 border-green-500/20 shadow-[0_0_50px_rgba(34,197,94,0.2)]"><CheckCircle className="w-12 h-12" /></div>
+                <div className="text-center space-y-2 px-8">
+                  <h3 className="text-3xl font-black text-white tracking-tight">Payment Recorded</h3>
+                  <p className="text-slate-400 text-sm leading-relaxed font-medium">Verification in progress. Credits will be added to your account shortly.</p>
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => setShowUPIModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-[130]"><X className="w-6 h-6" /></button>
+            
+            <div className="space-y-2">
+              <div className="flex items-center gap-4">
+                 <div className="w-14 h-14 bg-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center shadow-inner"><ShieldCheck className="w-8 h-8" /></div>
+                 <div>
+                    <h3 className="text-2xl font-black text-white tracking-tight">Upgrade Your Vision</h3>
+                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">Secure UPI Payment Engine</p>
+                 </div>
+              </div>
+            </div>
+
+            {/* Plan Selector */}
+            <div className="space-y-4">
+              {!showAllPlans ? (
+                <div className="p-6 rounded-3xl border-2 border-emerald-500/30 bg-emerald-500/10 shadow-lg shadow-emerald-500/5 text-center space-y-2 animate-in fade-in zoom-in-95">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Most Popular</p>
+                  <h4 className="text-3xl font-black text-white">1 Credit / ₹10</h4>
+                  <p className="text-[11px] text-slate-500 font-medium">Perfect for a quick single video export.</p>
+                  <button 
+                    onClick={() => {
+                      setSelectedPlan(PLANS.find(p => p.id === 'single'));
+                      setShowAllPlans(true);
+                    }} 
+                    className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 transition-colors uppercase tracking-widest pt-2 underline underline-offset-4"
+                  >
+                    View Bulk Savings
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 animate-in fade-in slide-in-from-top-4">
+                  <div className="grid grid-cols-1 gap-3">
+                    {PLANS.map(plan => (
+                      <button 
+                        key={plan.id}
+                        onClick={() => setSelectedPlan(plan)}
+                        className={`p-5 rounded-3xl border-2 transition-all text-left flex items-center justify-between group relative overflow-hidden ${selectedPlan.id === plan.id ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/5' : 'border-white/5 hover:border-white/10 bg-white/5'}`}
+                      >
+                        {selectedPlan.id === plan.id && <div className="absolute top-0 right-0 p-2 bg-indigo-500 text-white rounded-bl-xl"><CheckCircle className="w-3 h-3" /></div>}
+                        <div className="space-y-1">
+                          <p className={`text-[10px] font-black uppercase tracking-widest ${selectedPlan.id === plan.id ? 'text-indigo-400' : 'text-slate-500'}`}>{plan.label}</p>
+                          <h4 className="text-xl font-black text-white">{plan.credits} Credits</h4>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-black text-white">₹{plan.price}</p>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">One-time</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <button 
+                    onClick={() => setShowAllPlans(false)} 
+                    className="w-full text-center text-[10px] font-black text-slate-500 hover:text-white transition-colors uppercase tracking-widest"
+                  >
+                    Back to Quick Top-up
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* UPI Action Area */}
+            <div className="bg-black/40 rounded-[2.5rem] p-8 border border-white/5 space-y-6 shadow-inner text-center">
+               <div className="space-y-4">
+                  <div className="w-20 h-20 bg-indigo-500/10 text-indigo-400 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-indigo-500/20 shadow-inner">
+                    <Smartphone className="w-10 h-10" />
+                  </div>
+                  <h4 className="text-xl font-black text-white">Direct App Payment</h4>
+                  <p className="text-[13px] text-slate-400 font-medium leading-relaxed px-4">
+                    Pay <span className="text-white font-bold">₹{selectedPlan.price}</span> via GPay, PhonePe, or Paytm. Your request is tracked via your email <span className="text-indigo-400 font-bold">{user?.email}</span>.
+                  </p>
+               </div>
+
+               <button 
+                  onClick={handleInitiatePayment}
+                  disabled={isSubmittingPayment}
+                  className={`w-full py-6 rounded-3xl font-black text-sm uppercase tracking-[0.2em] flex items-center justify-center gap-4 transition-all ${t.accent} shadow-2xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50`}
+               >
+                  {isSubmittingPayment ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-6 h-6" />}
+                  {isSubmittingPayment ? "Initiating..." : `Pay ₹${selectedPlan.price} with UPI`}
+               </button>
+
+               {authError && (
+                 <div className="flex items-center justify-center gap-2 text-red-400 animate-in shake-1">
+                    <AlertCircle className="w-3 h-3" />
+                    <p className="text-[10px] font-black uppercase tracking-wider">{authError}</p>
+                 </div>
+               )}
+
+               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pt-2">Credits will be added after verification</p>
+            </div>
+            <p className="text-center text-[9px] text-slate-600 font-bold uppercase tracking-widest">Trust & Security by VocalAd Engine</p>
+          </div>
+        </div>
+      )}
+
       {/* Magic Wand Modal */}
       {showMagicWand && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-lg">
@@ -500,15 +753,33 @@ const App = () => {
       {/* Auth Modal */}
       {showAuthModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className={`${t.dropdown} rounded-[2.5rem] p-10 max-w-sm w-full border text-center space-y-6 shadow-2xl`}>
-            <div className="w-20 h-20 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto">{getModalContent().icon}</div>
+          <div className={`${t.dropdown} rounded-[2.5rem] p-8 md:p-10 max-w-sm w-full border text-center space-y-6 shadow-2xl relative overflow-hidden transition-all duration-500`}>
+            {isAuthLoading && (
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] z-50 flex flex-col items-center justify-center gap-4 animate-in fade-in duration-300">
+                <RefreshCw className="w-10 h-10 text-indigo-500 animate-spin" />
+                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Verifying Identity...</p>
+              </div>
+            )}
+
+            <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-[60]"><X className="w-6 h-6" /></button>
+            
+            {/* Tabs */}
+            {authMode !== 'reset' && (
+              <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5 w-full">
+                <button onClick={() => { setAuthMode('signup'); setAuthError(""); }} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${authMode === 'signup' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Sign Up</button>
+                <button onClick={() => { setAuthMode('login'); setAuthError(""); }} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${authMode === 'login' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Login</button>
+              </div>
+            )}
+
+            <div className="w-16 h-16 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto">{getModalContent().icon}</div>
             <h3 className={`text-2xl font-black ${t.textHead}`}>{authMode === 'reset' ? "Reset Password" : getModalContent().title}</h3>
-            <p className={`${t.textBody} text-sm`}>{authMode === 'reset' ? "We'll send a recovery link to your email." : getModalContent().body}</p>
+            <p className={`${t.textBody} text-[11px] leading-relaxed`}>{authMode === 'reset' ? "We'll send a recovery link to your email." : getModalContent().body}</p>
             
             {authMode !== 'reset' && (
               <button 
                 onClick={signInWithGoogle}
-                className="w-full py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg hover:bg-slate-100 transition-all border border-slate-200"
+                disabled={isAuthLoading}
+                className="w-full py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg hover:bg-slate-100 transition-all border border-slate-200 disabled:opacity-50"
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
                 Connect with Google
@@ -516,7 +787,7 @@ const App = () => {
             )}
 
             {authMode !== 'reset' && (
-              <div className="flex items-center gap-4 py-2">
+              <div className="flex items-center gap-4 py-1">
                 <div className="h-px bg-white/10 flex-1" />
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">or</span>
                 <div className="h-px bg-white/10 flex-1" />
@@ -524,16 +795,44 @@ const App = () => {
             )}
 
             <form onSubmit={handleEmailAuth} className="space-y-4">
-              <input type="email" placeholder="Email Address" className={`w-full p-4 rounded-2xl outline-none border transition-all ${t.input}`} value={email} onChange={e => setEmail(e.target.value)} required />
-              {authMode !== 'reset' && <input type="password" placeholder="Password" className={`w-full p-4 rounded-2xl outline-none border transition-all ${t.input}`} value={password} onChange={e => setPassword(e.target.value)} required />}
-              <button type="submit" className={`w-full py-4 rounded-2xl font-bold transition-all ${t.accent}`}>{authMode === 'signup' ? "Sign Up" : authMode === 'login' ? "Login" : "Send Reset Link"}</button>
+              <input type="email" placeholder="Email Address" className={`w-full p-4 rounded-2xl outline-none border transition-all ${t.input} text-sm`} value={email} onChange={e => setEmail(e.target.value)} required />
+              
+              {authMode !== 'reset' && (
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="Password" 
+                    className={`w-full p-4 pr-12 rounded-2xl outline-none border transition-all ${t.input} text-sm`} 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)} 
+                    required 
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-indigo-400 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              )}
+
+              <button type="submit" disabled={isAuthLoading} className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${t.accent} shadow-xl shadow-indigo-500/20 disabled:opacity-50`}>
+                {authMode === 'signup' ? "Create Account" : authMode === 'login' ? "Access Profile" : "Send Reset Link"}
+              </button>
             </form>
-            <div className="flex flex-col gap-4 text-xs font-bold uppercase tracking-widest">
-              <button onClick={() => setAuthMode(authMode === 'signup' ? 'login' : 'signup')} className="text-indigo-400">{authMode === 'signup' ? "Already have an account? Login" : "Need an account? Sign Up"}</button>
-              {authMode === 'login' && <button onClick={() => setAuthMode('reset')} className={`${t.textBody} hover:text-indigo-400`}>Forgot Password?</button>}
+
+            <div className="flex flex-col gap-4 text-[10px] font-black uppercase tracking-widest pt-2">
+              {authMode === 'login' && <button onClick={() => setAuthMode('reset')} className={`${t.textBody} hover:text-indigo-400 transition-colors`}>Forgot Password?</button>}
+              {authMode === 'reset' && <button onClick={() => setAuthMode('login')} className="text-indigo-400">Back to Login</button>}
             </div>
-            {authError && <p className="text-red-400 text-xs font-bold">{authError}</p>}
-            <button onClick={() => setShowAuthModal(false)} className={`${t.textBody} font-bold text-xs uppercase`}>Close</button>
+
+            {authError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl animate-in shake-1">
+                <p className="text-red-400 text-[10px] font-black uppercase tracking-wider leading-relaxed">{authError}</p>
+              </div>
+            )}
+            {authMessage && <p className="text-green-400 text-[10px] font-black uppercase tracking-wider">{authMessage}</p>}
           </div>
         </div>
       )}
@@ -549,10 +848,13 @@ const App = () => {
            </div>
 
            <div className="flex items-center gap-2 md:gap-4 relative" ref={dropdownRef}>
-              <div className="bg-black/10 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[9px] md:text-[10px] font-black tracking-widest border border-black/5 flex items-center gap-1.5 md:gap-2">
+              <button 
+                onClick={handlePurchase}
+                className="bg-black/10 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[9px] md:text-[10px] font-black tracking-widest border border-black/5 flex items-center gap-1.5 md:gap-2 hover:bg-black/20 transition-all"
+              >
                  <ShieldCheck className="w-3 h-3 md:w-3.5 md:h-3.5 text-indigo-500" />
                  <span className="hidden xs:inline">{usage.creditsRemaining ?? 0}</span> CREDITS
-              </div>
+              </button>
               
               <button 
                 onClick={() => setShowProfileDropdown(!showProfileDropdown)}
@@ -568,7 +870,7 @@ const App = () => {
                       <p className={`text-xs md:sm font-bold truncate ${t.textHead}`}>{user?.isAnonymous ? "Guest Session" : user?.email}</p>
                    </div>
                    <div className="space-y-1">
-                      <button className={`w-full flex items-center gap-3 p-2.5 md:p-3 rounded-xl hover:bg-black/5 transition-all text-[11px] md:text-xs font-bold ${t.textBody} group`}>
+                      <button onClick={handlePurchase} className={`w-full flex items-center gap-3 p-2.5 md:p-3 rounded-xl hover:bg-black/5 transition-all text-[11px] md:text-xs font-bold ${t.textBody} group`}>
                          <CreditCard className="w-4 h-4 group-hover:text-indigo-500" /> My Subscription
                       </button>
                       <button className={`w-full flex items-center gap-3 p-2.5 md:p-3 rounded-xl hover:bg-black/5 transition-all text-[11px] md:text-xs font-bold ${t.textBody} group`}>

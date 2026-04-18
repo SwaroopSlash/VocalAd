@@ -19,10 +19,10 @@
 - [x] Transition to `creditsRemaining` system (replacing `videoCount`).
 - [x] **New:** VocalAd.ai Branding & Professional UI.
 - [x] **New:** Fit vs. Fill Choice with Blurred Background fallback.
-- [ ] **Next:** AI Script Architect (Magic Wand tool for script generation).
-- [ ] **Next:** Mobile Ergonomics Pass (Above-the-fold previews & Logic-first layout).
-- [ ] UPI Payment Modal (QR Code / Deep Links).
-- [ ] Manual/Automatic payment verification logic.
+- [x] **Next:** AI Script Architect (Magic Wand tool for script generation).
+- [x] **Next:** Mobile Ergonomics Pass (Above-the-fold previews & Logic-first layout).
+- [x] UPI Payment Modal (One-Tap Redirect).
+- [/] Manual/Automatic payment verification logic. (Manual flow implemented)
 
 ## Testing & Quality Assurance
 - [ ] Build `AdVocalizeLab.js` for automated API & Renderer health checks.
