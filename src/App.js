@@ -144,10 +144,13 @@ const App = () => {
   const [image, setImage] = useState(null); // This will hold the URL for preview
   const [assetType, setAssetType] = useState('image'); // 'image' or 'video'
   const [videoVolume, setVideoVolume] = useState(0.5); 
-  const [selectedRatio, setSelectedRatio] = useState(RATIOS[2]);
-  const [fitMode, setFitMode] = useState('cover'); // 'cover' or 'contain'
+  const [videoMode, setVideoLoopMode] = useState('loop'); // 'loop' or 'freeze'
+  const [selectedRatio, setSelectedRatio] = useState(RATIOS[0]); // Default: Story
+  const [fitMode, setFitMode] = useState('contain'); // Default: Fit Entire
   const [selectedTone, setSelectedTone] = useState(TONES[0]);
   const [text, setText] = useState("");
+  const [showConfig, setShowConfig] = useState(false);
+  const [voiceSuccess, setVoiceSuccess] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0].name); // Aoede (Female) Default
   const [selectedSpeed, setSelectedSpeed] = useState(SPEEDS[0]);
 
@@ -464,6 +467,7 @@ const App = () => {
   const generateAudio = async () => {
     if (!text.trim()) return;
     setError(null);
+    setVoiceSuccess(false);
 
     const isPro = usage.tier === 'paid';
     if (!isPro) {
@@ -508,7 +512,9 @@ const App = () => {
 
       const blob = pcmToWav(bytes.buffer, sampleRate);
       setAudioUrl(URL.createObjectURL(blob)); setAudioBlob(blob); setAudioProgress(100);
+      setVoiceSuccess(true);
       setTimeout(() => { setIsGeneratingAudio(false); setAudioProgress(0); }, 500);
+      setTimeout(() => setVoiceSuccess(false), 4000);
     } catch (err) { 
       setError(err.message); 
       setIsGeneratingAudio(false); 
@@ -632,6 +638,17 @@ const App = () => {
         const assetHeight = assetType === 'video' ? assetElement.videoHeight : assetElement.height;
         const assetRatio = assetWidth / assetHeight;
         const canvasRatio = canvas.width / canvas.height;
+
+        // Video Frame Synchronization
+        if (assetType === 'video') {
+          const videoDuration = assetElement.duration;
+          if (videoMode === 'loop') {
+            assetElement.currentTime = elapsed % videoDuration;
+          } else {
+            // Freeze Mode
+            assetElement.currentTime = Math.min(elapsed, videoDuration - 0.1);
+          }
+        }
         
         let dw, dh, ox = 0, oy = 0;
 
@@ -1153,84 +1170,97 @@ const App = () => {
                      </button>
                   </div>
 
-                  {/* Settings Section - Below on Mobile, Side by Side on Desktop */}
-                  <div className="space-y-6 md:space-y-8 order-2">
-                     <div className="px-1 flex items-center justify-between">
-                        <label className={`font-black tracking-wider text-[9px] md:text-[10px] uppercase ${t.textBody}`}>Fine-Tune Talent</label>
+                  {/* Configuration Settings - Collapsible Dropdown */}
+                  <div className="space-y-4 order-2">
+                     <button 
+                        onClick={() => setShowConfig(!showConfig)}
+                        className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all ${showConfig ? 'border-indigo-500 bg-indigo-500/5' : `border-white/5 bg-white/5`}`}
+                     >
                         <div className="flex items-center gap-3">
-                           <div className="flex flex-col items-end">
-                              <p className={`text-[10px] font-black ${text.split(/\s+/).filter(x => x).length > (usage.tier === 'paid' ? 300 : 75) ? 'text-red-500' : 'text-indigo-400'}`}>
-                                 {text.split(/\s+/).filter(x => x).length} / {usage.tier === 'paid' ? '300' : '75'} Words
-                              </p>
-                              <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Est: {(text.split(/\s+/).filter(x => x).length / 2.5).toFixed(1)}s</p>
+                           <Settings className={`w-5 h-5 ${showConfig ? 'text-indigo-400 rotate-90' : 'text-slate-500'} transition-transform duration-500`} />
+                           <div className="text-left">
+                              <p className={`text-[10px] font-black uppercase tracking-widest ${showConfig ? 'text-indigo-400' : 'text-slate-400'}`}>Configuration Settings</p>
+                              <p className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter italic">Voice talent, tone, and asset volume</p>
                            </div>
                         </div>
-                     </div>
-                     <div className="grid grid-cols-1 xs:grid-cols-2 gap-4 md:gap-6">
-                        <div className="space-y-2">
-                           <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-60`}>Voice Tone</label>
-                           <select className={`w-full p-3.5 md:p-4 border-2 rounded-xl md:rounded-2xl font-bold text-xs md:text-sm transition-all ${t.input}`} value={selectedTone} onChange={e => {
-                              const isPro = usage.tier === 'paid';
-                              const index = TONES.indexOf(e.target.value);
-                              if (!isPro && index !== 0) return;
-                              setSelectedTone(e.target.value);
-                           }}>
-                              {TONES.map((t, idx) => (
-                                 <option key={t} value={t} disabled={usage.tier !== 'paid' && idx !== 0}>
-                                    {t} {usage.tier !== 'paid' && idx !== 0 ? ' \ud83d\udd12' : ''}
-                                 </option>
-                              ))}
-                           </select>
-                        </div>
-                        <div className="space-y-2">
-                           <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-60`}>Speech Pace</label>
-                           <select className={`w-full p-3.5 md:p-4 border-2 rounded-xl md:rounded-2xl font-bold text-xs md:text-sm transition-all ${t.input}`} value={selectedSpeed.label} onChange={e => {
-                              const isPro = usage.tier === 'paid';
-                              const speed = SPEEDS.find(s => s.label === e.target.value);
-                              const index = SPEEDS.indexOf(speed);
-                              if (!isPro && index !== 0) return;
-                              setSelectedSpeed(speed);
-                           }}>
-                              {SPEEDS.map((s, idx) => (
-                                 <option key={s.label} value={s.label} disabled={usage.tier !== 'paid' && idx !== 0}>
-                                    {s.label} {usage.tier !== 'paid' && idx !== 0 ? ' \ud83d\udd12' : ''}
-                                 </option>
-                              ))}
-                           </select>
-                        </div>
-                     </div>
-                     {assetType === 'video' && (
-                        <div className="space-y-3 p-4 bg-black/20 rounded-2xl border border-white/5 shadow-inner">
-                           <div className="flex justify-between items-center">
-                              <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-80`}>Original Video Volume</label>
-                              <span className="text-[10px] font-black text-indigo-400">{Math.round(videoVolume * 100)}%</span>
+                        {showConfig ? <X className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-500" />}
+                     </button>
+
+                     {showConfig && (
+                        <div className="space-y-6 md:space-y-8 animate-in slide-in-from-top-4 duration-500 p-1">
+                           <div className="grid grid-cols-1 xs:grid-cols-2 gap-4 md:gap-6">
+                              <div className="space-y-2">
+                                 <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-60`}>Voice Tone</label>
+                                 <select className={`w-full p-3.5 md:p-4 border-2 rounded-xl md:rounded-2xl font-bold text-xs md:text-sm transition-all ${t.input}`} value={selectedTone} onChange={e => {
+                                    const isPro = usage.tier === 'paid';
+                                    const index = TONES.indexOf(e.target.value);
+                                    if (!isPro && index !== 0) return;
+                                    setSelectedTone(e.target.value);
+                                 }}>
+                                    {TONES.map((t, idx) => (
+                                       <option key={t} value={t} disabled={usage.tier !== 'paid' && idx !== 0}>
+                                          {t} {usage.tier !== 'paid' && idx !== 0 ? ' \ud83d\udd12' : ''}
+                                       </option>
+                                    ))}
+                                 </select>
+                              </div>
+                              <div className="space-y-2">
+                                 <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-60`}>Speech Pace</label>
+                                 <select className={`w-full p-3.5 md:p-4 border-2 rounded-xl md:rounded-2xl font-bold text-xs md:text-sm transition-all ${t.input}`} value={selectedSpeed.label} onChange={e => {
+                                    const isPro = usage.tier === 'paid';
+                                    const speed = SPEEDS.find(s => s.label === e.target.value);
+                                    const index = SPEEDS.indexOf(speed);
+                                    if (!isPro && index !== 0) return;
+                                    setSelectedSpeed(speed);
+                                 }}>
+                                    {SPEEDS.map((s, idx) => (
+                                       <option key={s.label} value={s.label} disabled={usage.tier !== 'paid' && idx !== 0}>
+                                          {s.label} {usage.tier !== 'paid' && idx !== 0 ? ' \ud83d\udd12' : ''}
+                                       </option>
+                                    ))}
+                                 </select>
+                              </div>
                            </div>
-                           <input type="range" min="0" max="1" step="0.01" value={videoVolume} onChange={(e) => setVideoVolume(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
-                           <p className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter italic text-center">Lower this for better AI Voice clarity (Ducking)</p>
+                           {assetType === 'video' && (
+                              <div className="space-y-3 p-4 bg-black/20 rounded-2xl border border-white/5 shadow-inner">
+                                 <div className="flex justify-between items-center">
+                                    <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-80`}>Original Video Volume</label>
+                                    <span className="text-[10px] font-black text-indigo-400">{Math.round(videoVolume * 100)}%</span>
+                                 </div>
+                                 <input type="range" min="0" max="1" step="0.01" value={videoVolume} onChange={(e) => setVideoVolume(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
+                                 <p className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter italic text-center">Lower this for better AI Voice clarity (Ducking)</p>
+                              </div>
+                           )}
+                           <div className="space-y-2">
+                              <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-1 ${t.textBody} opacity-60`}>AI Voice Talent</label>
+                              <div className={`max-h-48 md:max-h-60 overflow-y-auto border-2 p-2 rounded-2xl md:rounded-3xl transition-all ${t.nav} custom-scrollbar`}>
+                                 {VOICES.map((v, idx) => {
+                                    const isProFeature = idx !== 0; 
+                                    const isLocked = usage.tier !== 'paid' && isProFeature;
+                                    return (
+                                       <button key={v.name} onClick={() => !isLocked && setSelectedVoice(v.name)} className={`w-full p-3.5 md:p-4 text-left rounded-xl border-2 text-xs md:text-sm font-bold transition-all mb-2 flex items-center justify-between ${isLocked ? 'opacity-40 cursor-not-allowed grayscale' : selectedVoice === v.name ? `${t.accent} text-white shadow-lg border-transparent` : `bg-transparent border-transparent ${t.textBody} hover:bg-black/5`}`}>
+                                          <span className="flex items-center gap-2">
+                                             {v.label}
+                                             {isLocked && <div className="flex items-center gap-1 bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded-full text-[8px]"><Lock className="w-2.5 h-2.5" /> PRO</div>}
+                                          </span>
+                                          {selectedVoice === v.name && !isLocked && <CheckCircle className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                                       </button>
+                                    );
+                                 })}
+                              </div>
+                           </div>
                         </div>
                      )}
-                     <div className="space-y-2">
-                        <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-1 ${t.textBody} opacity-60`}>AI Voice Talent</label>
-                        <div className={`max-h-48 md:max-h-60 overflow-y-auto border-2 p-2 rounded-2xl md:rounded-3xl transition-all ${t.nav} custom-scrollbar`}>
-                           {VOICES.map((v, idx) => {
-                              const isProFeature = idx !== 0; // Aoede is index 0 and is free
-                              const isLocked = usage.tier !== 'paid' && isProFeature;
-                              return (
-                                 <button key={v.name} onClick={() => !isLocked && setSelectedVoice(v.name)} className={`w-full p-3.5 md:p-4 text-left rounded-xl border-2 text-xs md:text-sm font-bold transition-all mb-2 flex items-center justify-between ${isLocked ? 'opacity-40 cursor-not-allowed grayscale' : selectedVoice === v.name ? `${t.accent} text-white shadow-lg border-transparent` : `bg-transparent border-transparent ${t.textBody} hover:bg-black/5`}`}>
-                                    <span className="flex items-center gap-2">
-                                       {v.label}
-                                       {isLocked && <div className="flex items-center gap-1 bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded-full text-[8px]"><Lock className="w-2.5 h-2.5" /> PRO</div>}
-                                    </span>
-                                    {selectedVoice === v.name && !isLocked && <CheckCircle className="w-3.5 h-3.5 md:w-4 md:h-4" />}
-                                 </button>
-                              );
-                           })}
-                        </div>
-                     </div>
                   </div>
                </div>
                
-               <div className="flex flex-col gap-6 pt-4 border-t border-black/5">
+               <div className="flex flex-col gap-6 pt-4 border-t border-black/5 relative">
+                  {/* Success Toast */}
+                  {voiceSuccess && (
+                     <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl flex items-center gap-2 animate-in slide-in-from-bottom-2 duration-300 z-[60]">
+                        <CheckCircle className="w-3.5 h-3.5" /> AI Voice Ready!
+                     </div>
+                  )}
                   {isGeneratingAudio && (
                      <div className="space-y-4 max-w-xl mx-auto w-full">
                         <div className="flex justify-between items-center text-[9px] md:text-[10px] font-black text-indigo-500 uppercase tracking-widest">
@@ -1273,23 +1303,57 @@ const App = () => {
           )}
 
           {step === 3 && (
-            <div className="py-12 space-y-12 animate-in fade-in duration-700">
-              <div className="relative mx-auto bg-black rounded-[4rem] overflow-hidden shadow-2xl border-8 border-slate-700" style={{ width: '280px', aspectRatio: selectedRatio.ratio }}>
-                <img src={image} className={`w-full h-full object-cover transition-opacity duration-500 ${isCreatingVideo ? 'opacity-50' : 'opacity-100'}`} alt="Mixing" />
-                {isCreatingVideo && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <RefreshCw className="w-12 h-12 text-indigo-500 animate-spin" />
+            <div className="py-6 md:py-12 space-y-10 animate-in fade-in duration-700">
+              <div className="flex flex-col lg:grid lg:grid-cols-2 gap-12 items-center text-left">
+                <div className="relative mx-auto bg-black rounded-[3rem] md:rounded-[4rem] overflow-hidden shadow-2xl border-8 border-slate-700 w-[240px] md:w-[280px]" style={{ aspectRatio: selectedRatio.ratio }}>
+                  {assetType === 'image' ? (
+                    <img src={image} className={`w-full h-full object-cover transition-opacity duration-500 ${isCreatingVideo ? 'opacity-50' : 'opacity-100'}`} alt="Mixing" />
+                  ) : (
+                    <video src={image} muted autoPlay loop className={`w-full h-full object-cover transition-opacity duration-500 ${isCreatingVideo ? 'opacity-50' : 'opacity-100'}`} />
+                  )}
+                  {isCreatingVideo && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <RefreshCw className="w-12 h-12 text-indigo-500 animate-spin" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-8 w-full max-w-md mx-auto lg:mx-0">
+                  <div className="space-y-2">
+                    <h2 className="text-3xl md:text-4xl font-black tracking-tighter text-white">Mixing Studio</h2>
+                    <p className="text-slate-400 text-sm font-medium">Finalize how your assets synchronize with the AI talent.</p>
                   </div>
-                )}
-              </div>
-              <div className="max-w-md mx-auto space-y-8 text-center">
-                <h2 className="text-4xl font-black tracking-tighter text-white">Ready to Mix</h2>
-                <div className="flex gap-4 justify-center">
-                   <button onClick={() => setStep(2)} className="px-8 py-4 border-2 border-slate-700 rounded-2xl font-black text-xs uppercase text-slate-400">Back</button>
-                   <button disabled={isCreatingVideo} onClick={createVideo} className="px-12 py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg shadow-2xl flex items-center gap-3 hover:bg-indigo-500 transition-all">
-                    {isCreatingVideo ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Video className="w-6 h-6" />}
-                    {isCreatingVideo ? "Rendering..." : "Create Final Video"}
-                  </button>
+
+                  {assetType === 'video' && (
+                    <div className="space-y-4 p-6 bg-white/5 rounded-3xl border border-white/10 shadow-inner">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">Sync Logic</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button 
+                          onClick={() => setVideoLoopMode('loop')}
+                          className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${videoMode === 'loop' ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/5 bg-black/20 text-slate-500'}`}
+                        >
+                          <RefreshCw className={`w-5 h-5 ${videoMode === 'loop' ? 'text-indigo-400' : ''}`} />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Loop Video</span>
+                        </button>
+                        <button 
+                          onClick={() => setVideoLoopMode('freeze')}
+                          className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${videoMode === 'freeze' ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/5 bg-black/20 text-slate-500'}`}
+                        >
+                          <Lock className={`w-5 h-5 ${videoMode === 'freeze' ? 'text-indigo-400' : ''}`} />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Freeze End</span>
+                        </button>
+                      </div>
+                      <p className="text-[9px] text-slate-500 font-medium italic text-center">AI Voice is longer than video? Choose how to handle the extra time.</p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-4 pt-4">
+                     <button onClick={() => setStep(2)} className="flex-1 py-5 border-2 border-white/10 rounded-2xl font-black text-xs uppercase text-slate-400 hover:bg-white/5 transition-all">Back</button>
+                     <button disabled={isCreatingVideo} onClick={createVideo} className="flex-[2] py-5 bg-indigo-600 text-white rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-3 hover:bg-indigo-500 transition-all active:scale-95 disabled:opacity-50">
+                      {isCreatingVideo ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                      {isCreatingVideo ? "Rendering..." : "Produce Ad"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
