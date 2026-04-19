@@ -66,7 +66,7 @@ const db = getFirestore(app);
 const appId = 'advocalize-pro-v2';
 
 const BRAIN_MODEL = "gemini-2.5-flash-lite"; 
-const VOICE_MODEL = "gemini-3.1-flash-tts-preview"; 
+const VOICE_MODEL = "gemini-2.5-flash-preview-tts"; 
 
 const PLANS = [
   { id: 'dummy', label: 'Backend Test', credits: 0, price: 1.23, color: 'slate' },
@@ -164,7 +164,95 @@ const App = () => {
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewTime, setPreviewTime] = useState(0);
+  const [previewDuration, setPreviewDuration] = useState(0);
+  const previewVideoRef = useRef(null);
+  const previewAudioRef = useRef(null);
   const [finalVideoUrl, setFinalVideoUrl] = useState(null);
+
+  // Sync Video Preview with Audio and Mode
+  useEffect(() => {
+    if (step !== 3) return;
+
+    const v = previewVideoRef.current;
+    const a = previewAudioRef.current;
+    if (!a) return;
+
+    const updateDuration = () => setPreviewDuration(a.duration);
+    a.addEventListener('loadedmetadata', updateDuration);
+    if (a.duration) setPreviewDuration(a.duration);
+
+    if (!isPreviewPlaying) {
+      a.pause();
+      if (v) v.pause();
+      return;
+    }
+
+    // Set initial sync position
+    if (v && assetType === 'video') {
+      const aPos = a.currentTime;
+      const vDur = v.duration;
+      if (videoMode === 'freeze') {
+        v.currentTime = Math.min(aPos, vDur - 0.1);
+      } else {
+        v.currentTime = aPos % vDur;
+      }
+    }
+
+    const syncPreview = () => {
+      if (!isPreviewPlaying) return;
+      
+      if (a.paused && isPreviewPlaying) {
+        setIsPreviewPlaying(false);
+        return;
+      }
+
+      setPreviewTime(a.currentTime);
+
+      if (v && assetType === 'video') {
+        const vDur = v.duration;
+        const aPos = a.currentTime;
+
+        if (videoMode === 'freeze') {
+          if (aPos >= vDur) {
+            if (!v.paused) v.pause();
+            v.currentTime = vDur - 0.1;
+          } else {
+            if (v.paused && !a.paused) v.play().catch(() => {});
+            // Minor drift correction
+            if (Math.abs(v.currentTime - aPos) > 0.2) {
+              v.currentTime = aPos;
+            }
+          }
+        } else {
+          // Loop Mode
+          if (v.paused && !a.paused) v.play().catch(() => {});
+          // Minor drift correction
+          const expectedVPos = aPos % vDur;
+          if (Math.abs(v.currentTime - expectedVPos) > 0.2) {
+            v.currentTime = expectedVPos;
+          }
+        }
+      }
+      requestAnimationFrame(syncPreview);
+    };
+
+    if (isPreviewPlaying) {
+      a.play().catch(err => {
+        console.error("Audio playback failed:", err);
+        setIsPreviewPlaying(false);
+      });
+      if (v && assetType === 'video') v.play().catch(() => {});
+      requestAnimationFrame(syncPreview);
+    }
+
+    return () => {
+      a.removeEventListener('loadedmetadata', updateDuration);
+      a.pause();
+      if (v) v.pause();
+    };
+  }, [isPreviewPlaying, videoMode, step, assetType]);
   const [error, setError] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [pendingDownloadType, setPendingDownloadType] = useState(null); 
@@ -1305,14 +1393,28 @@ const App = () => {
           {step === 3 && (
             <div className="py-6 md:py-12 space-y-10 animate-in fade-in duration-700">
               <div className="flex flex-col lg:grid lg:grid-cols-2 gap-12 items-center text-left">
-                <div className="relative mx-auto bg-black rounded-[3rem] md:rounded-[4rem] overflow-hidden shadow-2xl border-8 border-slate-700 w-[240px] md:w-[280px]" style={{ aspectRatio: selectedRatio.ratio }}>
+                <div 
+                  onClick={() => setIsPreviewPlaying(!isPreviewPlaying)}
+                  className="relative mx-auto bg-black rounded-[3rem] md:rounded-[4rem] overflow-hidden shadow-2xl border-8 border-slate-700 w-[240px] md:w-[280px] cursor-pointer group" 
+                  style={{ aspectRatio: selectedRatio.ratio }}
+                >
                   {assetType === 'image' ? (
                     <img src={image} className={`w-full h-full object-cover transition-opacity duration-500 ${isCreatingVideo ? 'opacity-50' : 'opacity-100'}`} alt="Mixing" />
                   ) : (
-                    <video src={image} muted autoPlay loop className={`w-full h-full object-cover transition-opacity duration-500 ${isCreatingVideo ? 'opacity-50' : 'opacity-100'}`} />
+                    <video ref={previewVideoRef} src={image} muted className={`w-full h-full object-cover transition-opacity duration-500 ${isCreatingVideo ? 'opacity-50' : 'opacity-100'}`} />
                   )}
+                  
+                  {/* Interaction Overlay */}
+                  {!isCreatingVideo && (
+                    <div className={`absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity ${!isPreviewPlaying ? 'opacity-100' : ''}`}>
+                      <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border border-white/30 shadow-2xl">
+                        {isPreviewPlaying ? <X className="w-8 h-8 text-white" /> : <Volume2 className="w-8 h-8 text-white" />}
+                      </div>
+                    </div>
+                  )}
+
                   {isCreatingVideo && (
-                    <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60">
                       <RefreshCw className="w-12 h-12 text-indigo-500 animate-spin" />
                     </div>
                   )}
@@ -1322,6 +1424,55 @@ const App = () => {
                   <div className="space-y-2">
                     <h2 className="text-3xl md:text-4xl font-black tracking-tighter text-white">Mixing Studio</h2>
                     <p className="text-slate-400 text-sm font-medium">Finalize how your assets synchronize with the AI talent.</p>
+                  </div>
+
+                  {/* Live Preview Controller */}
+                  <div className="bg-indigo-500/10 border border-indigo-500/20 p-6 rounded-3xl space-y-6">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Live Simulation</p>
+                      <span className="text-[9px] font-bold text-slate-500 bg-black/20 px-2 py-0.5 rounded-full">No Credits Used</span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <button 
+                        onClick={() => setIsPreviewPlaying(!isPreviewPlaying)}
+                        className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${isPreviewPlaying ? 'bg-slate-800 text-white' : 'bg-white text-indigo-600 shadow-xl'}`}
+                      >
+                        {isPreviewPlaying ? <X className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                        {isPreviewPlaying ? "Stop Preview" : "Preview Mix"}
+                      </button>
+
+                      {/* Progress Slider */}
+                      <div className="space-y-2 pt-2">
+                        <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 px-1">
+                          <span>{Math.floor(previewTime / 60)}:{(previewTime % 60).toFixed(0).padStart(2, '0')}</span>
+                          <span>{Math.floor(previewDuration / 60)}:{(previewDuration % 60).toFixed(0).padStart(2, '0')}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max={previewDuration || 0} 
+                          step="0.01" 
+                          value={previewTime} 
+                          onChange={(e) => {
+                            const time = parseFloat(e.target.value);
+                            if (previewAudioRef.current) previewAudioRef.current.currentTime = time;
+                            if (previewVideoRef.current && assetType === 'video') {
+                              const v = previewVideoRef.current;
+                              if (videoMode === 'freeze') {
+                                v.currentTime = Math.min(time, v.duration - 0.1);
+                              } else {
+                                v.currentTime = time % v.duration;
+                              }
+                            }
+                            setPreviewTime(time);
+                          }}
+                          className="w-full h-1.5 bg-indigo-500/20 rounded-full appearance-none accent-indigo-500 cursor-pointer" 
+                        />
+                      </div>
+                    </div>
+
+                    <audio ref={previewAudioRef} src={audioUrl} controlsList="nodownload" onEnded={() => setIsPreviewPlaying(false)} className="hidden" />
                   </div>
 
                   {assetType === 'video' && (

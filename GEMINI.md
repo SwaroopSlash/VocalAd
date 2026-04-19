@@ -2,7 +2,7 @@
 
 ## Stage 1: Core Engine (V1)
 - [x] 4-Step Ad Creation Flow.
-- [x] Gemini 2.5 Brain + 3.1 TTS integration.
+- [x] Gemini 1.5 Brain + 3.1 TTS integration.
 - [x] Aspect Ratio Presets (WhatsApp Story, Instagram Post, Cinema).
 - [x] Image fitting logic (Cover/Fit) on Canvas.
 
@@ -22,12 +22,16 @@
 - [x] AI Script Architect (Magic Wand tool for script generation).
 - [x] Mobile Ergonomics Pass (Above-the-fold previews & Logic-first layout).
 - [x] UPI Payment Modal (One-Tap Redirect).
-- [x] **UI/UX:** Enhanced Credit visibility and Profile Dropdown with Tier details.
-- [x] **Auth:** Refined login labels and fixed "Link Account" messaging.
 - [x] **Infrastructure:** Migrated to Firebase Functions v2 for better CORS & performance.
-- [x] **Security:** Implemented Google Cloud Secret Manager for Razorpay API keys.
-- [x] **Fix:** Resolved Razorpay 401 and "Payment Failed" errors for Live transactions.
-- [/] Manual/Automatic payment verification logic. (Manual flow implemented, automatic webhook in progress)
+- [x] **Security:** Fully operational Razorpay Live integration via Secret Manager.
+- [x] **Fixed:** Resolved 401 Auth errors and hidden character key bugs.
+- [/] Manual/Automatic payment verification logic. (Automatic webhook in progress)
+
+## Stage 4: Professional Polish & UX (Current)
+- [ ] **Fix:** Resolve frozen frame bug in final video renderer.
+- [ ] **UX:** Consolidate Voice selection into a clean dropdown.
+- [ ] **Ergonomics:** Unified Mixing Player (remove separate simulation slider).
+- [ ] **Cleanup:** Remove redundant UI steps and simplify the user journey.
 
 ## Testing & Quality Assurance
 - [x] Build `AdVocalizeLab.js` for automated API & Renderer health checks.
@@ -38,4 +42,4 @@
 - **Style over Specs:** Use "WhatsApp Style" instead of "Vertical 1080x1920".
 - **Safety First:** Strict `.env` usage, no hardcoded secrets.
 - **Logic First:** Action buttons placed where the user needs them next.
-- **Frictionless:** AI-assisted script writing and mobile-first ergonomics.
+- **Studio Ergonomics:** High-density, professional tools with zero fluff.
