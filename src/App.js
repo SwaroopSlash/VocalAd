@@ -146,7 +146,7 @@ const App = () => {
   const t = THEMES[currentTheme];
 
   const [user, setUser] = useState(null);
-  const [usage, setUsage] = useState({ creditsRemaining: 3, tier: 'free', voiceSamples: 0 });
+  const [usage, setUsage] = useState({ creditsRemaining: 3, tier: 'free', videoCount: 0, voiceSamples: 0 });
   const [localVoiceCount, setLocalVoiceCount] = useState(0);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -245,7 +245,8 @@ const App = () => {
         setUser(u);
         if (!u.isAnonymous) {
           setShowAuthModal(false);
-          await setDoc(doc(db, 'artifacts', appId, 'users', u.uid), { email: u.email, lastLogin: new Date().toISOString(), uid: u.uid, displayName: u.displayName || "" }, { merge: true });
+          const profileRef = doc(db, 'artifacts', appId, 'users', u.uid);
+          await setDoc(profileRef, { email: u.email, lastLogin: new Date().toISOString(), uid: u.uid, displayName: u.displayName || "" }, { merge: true });
         }
         if (pendingDownloadType && !u.isAnonymous) { triggerDownload(pendingDownloadType); setPendingDownloadType(null); }
       }
@@ -304,30 +305,55 @@ const App = () => {
     catch (err) { console.error("Sign out failed", err); }
   };
 
-  const loadRazorpayScript = () => new Promise((res) => {
+  // ARCHITECT'S SELF-HEALING LOADER
+  const loadRazorpay = () => new Promise((res) => {
     if (window.Razorpay) return res(true);
-    const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.onload = () => res(true); s.onerror = () => res(false); document.body.appendChild(s);
+    const s = document.createElement("script");
+    s.src = "https://checkout.razorpay.com/v1/checkout.js";
+    s.onload = () => res(true);
+    s.onerror = () => res(false);
+    document.body.appendChild(s);
   });
 
   const handleInitiatePayment = async () => {
-    const res = await loadRazorpayScript();
-    if (!res) { setAuthError("Razorpay failed to load."); return; }
+    // 1. Force check for SDK
+    const isLoaded = await loadRazorpay();
+    if (!isLoaded || !window.Razorpay) { 
+        setAuthError("Razorpay SDK not available. Check your internet or disable ad-blockers."); 
+        return; 
+    }
+
     setIsSubmittingPayment(true); setAuthError("");
     try {
       const { getFunctions, httpsCallable } = await import('firebase/functions');
       const functions = getFunctions(app, 'us-central1');
       const createOrder = httpsCallable(functions, 'createOrderV2');
-      const orderData = await createOrder({ amount: selectedPlan.price, planId: selectedPlan.id, appId });
-      if (!orderData?.data?.orderId) throw new Error("No Order ID returned.");
+      const orderData = await createOrder({ amount: selectedPlan.price, planId: selectedPlan.id });
+
+      if (!orderData?.data?.orderId) throw new Error("No Order ID returned from server.");
+
       const options = {
         key: process.env.REACT_APP_RAZORPAY_KEY_ID || "rzp_live_SfCZvOMFGefR8r",
-        amount: selectedPlan.price * 100, currency: "INR", name: "VocalAd AI", description: `Credits for ${selectedPlan.label}`, order_id: orderData.data.orderId,
-        handler: () => setPaymentSuccess(true), prefill: { email: user?.email || "" }, theme: { color: "#4f46e5" },
+        amount: selectedPlan.price * 100,
+        currency: "INR",
+        name: "VocalAd AI",
+        description: `Credits for ${selectedPlan.label}`,
+        order_id: orderData.data.orderId,
+        handler: function(response) {
+          setPaymentSuccess(true);
+          setShowUPIModal(false);
+        },
+        prefill: { email: user?.email || "" },
+        theme: { color: "#4f46e5" },
       };
+
       const rzp1 = new window.Razorpay(options);
-      rzp1.on('payment.failed', (resp) => setAuthError(`Payment failed: ${resp.error.description}`));
       rzp1.open();
-    } catch (err) { setAuthError(`Checkout Error: ${err.message}`); } finally { setIsSubmittingPayment(false); }
+    } catch (err) { 
+      console.error("Payment Error:", err);
+      setAuthError(`Checkout Error: ${err.message || "Please try again."}`); 
+    } 
+    finally { setIsSubmittingPayment(false); }
   };
 
   const pcmToWav = (pcmBuffer, sampleRate) => {
@@ -370,7 +396,7 @@ const App = () => {
     }
     setIsGeneratingAudio(true); setLocalVoiceCount(prev => prev + 1); setAudioProgress(20);
     try {
-      const internalPrompt = `Theatrical script producer. Refine for high-converting ${selectedTone} in ${selectedLanguage.label}. DO NOT translate. Plain text + prosody markers. Text: "${text}"`;
+      const internalPrompt = `Theatrical script producer. Refine for high-converting ${selectedTone} commercial in ${selectedLanguage.label}. Preserve original wording. Plain text only. Text: "${text}"`;
       const res1 = await callGemini(internalPrompt, BRAIN_MODEL);
       const refinedScript = res1.error ? text : res1.candidates?.[0]?.content?.parts?.[0]?.text;
       setAudioProgress(60);
@@ -467,12 +493,12 @@ const App = () => {
 
   const getModalContent = () => {
     switch (modalReason) {
-      case "voice_limit_free": return { icon: <Volume2 className="w-8 h-8" />, title: "Voice Limit Reached", body: "You've used your 3 free voice attempts. Sign in to continue." };
+      case "voice_limit_free": return { icon: <Volume2 className="w-8 h-8" />, title: "Voice Limit Reached", body: "3 free voice attempts used. Sign in to continue." };
       case "out_of_credits": return { icon: <Video className="w-8 h-8" />, title: "Credits Exhausted", body: "Top up now to continue creating." };
-      case "download_lock": return { icon: <Download className="w-8 h-8" />, title: "Claim Your Ad", body: "Sign in to download and save your projects permanently." };
+      case "download_lock": return { icon: <Download className="w-8 h-8" />, title: "Claim Your Ad", body: "Sign in to save and download your work." };
       case "purchase_lock": return { icon: <CreditCard className="w-8 h-8" />, title: "Sign In to Upgrade", body: "Create an account to purchase credits." };
-      case "premium_locked": return { icon: <Sparkles className="w-8 h-8" />, title: "Premium Feature", body: "Upgrade to Creator Pro to unlock advanced features." };
-      default: return { icon: <Sparkles className="w-8 h-8" />, title: "Welcome to VocalAd.ai", body: "Access premium AI tools and high-fidelity production." };
+      case "premium_locked": return { icon: <Sparkles className="w-8 h-8" />, title: "Premium Feature", body: "Upgrade to Creator Pro to unlock." };
+      default: return { icon: <Sparkles className="w-8 h-8" />, title: "Welcome to VocalAd.ai", body: "Sign in to access premium AI voices." };
     }
   };
 
@@ -484,7 +510,7 @@ const App = () => {
           <div className={`${t.dropdown} border border-white/10 rounded-[2.5rem] p-6 md:p-10 max-w-lg w-full shadow-2xl relative`}>
             {paymentSuccess && (
               <div className="sticky top-0 left-0 right-0 bottom-0 bg-slate-900/95 backdrop-blur-md z-[120] flex flex-col items-center justify-center gap-6 rounded-[2rem]">
-                <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center border-2 border-green-500/20"><CheckCircle className="w-12 h-12" /></div>
+                <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center border-2 border-green-500/20 shadow-[0_0_50px_rgba(34,197,94,0.1)]"><CheckCircle className="w-12 h-12" /></div>
                 <div className="text-center px-8"><h3 className="text-3xl font-black text-white tracking-tight">Success</h3><p className="text-slate-400 text-sm">Credits added shortly.</p><button onClick={() => {setPaymentSuccess(false); setShowUPIModal(false);}} className="mt-4 px-6 py-2 bg-white/10 text-white rounded-xl text-xs font-bold uppercase tracking-widest">Close</button></div>
               </div>
             )}
@@ -527,11 +553,7 @@ const App = () => {
             <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-[60]"><X className="w-6 h-6" /></button>
             <div className="w-16 h-16 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto">{getModalContent().icon}</div>
             <h3 className={`text-2xl font-black ${t.textHead}`}>{getModalContent().title}</h3>
-            
-            <button onClick={signInWithGoogle} disabled={isAuthLoading} className="w-full py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg hover:bg-slate-100 transition-all border border-slate-200 disabled:opacity-50">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                Connect with Google
-            </button>
+            <button onClick={signInWithGoogle} disabled={isAuthLoading} className="w-full py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg hover:bg-slate-100 transition-all border border-slate-200 disabled:opacity-50"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" /> Connect with Google</button>
             <div className="flex items-center gap-4 py-1"><div className="h-px bg-white/10 flex-1" /><span className="text-[10px] font-black text-slate-500 uppercase">or</span><div className="h-px bg-white/10 flex-1" /></div>
             <div className="flex bg-black/40 p-1 rounded-2xl border border-white/5 w-full">
               <button onClick={() => setAuthMode('signup')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'signup' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Sign Up</button>
@@ -545,7 +567,6 @@ const App = () => {
               </div>
               <button type="submit" disabled={isAuthLoading} className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${t.accent} shadow-xl shadow-indigo-500/20 disabled:opacity-50`}>{authMode === 'signup' ? "Create Account" : "Access Studio"}</button>
             </form>
-            {authError && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[9px] font-black uppercase animate-in shake-1 leading-relaxed">{authError}</div>}
           </div>
         </div>
       )}
@@ -578,7 +599,7 @@ const App = () => {
                       <button onClick={handlePurchase} className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-white/5 text-[11px] font-bold text-slate-300"><ShieldCheck className="w-4 h-4 text-indigo-500" /> Subscription Plan</button>
                       <div className="h-px bg-white/5 my-2" />
                       {user?.isAnonymous ? (
-                        <button onClick={() => { setAuthMode('login'); setShowAuthModal(true); setShowProfileDropdown(false); }} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all text-[11px] font-black text-white ${t.accent}`}><User className="w-4 h-4" /> Link Secure Account</button>
+                        <button onClick={() => { setAuthMode('login'); setShowAuthModal(true); setShowProfileDropdown(false); }} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all text-[11px] font-black text-white ${t.accent}`}><User className="w-4 h-4" /> Link Account</button>
                       ) : (
                         <button onClick={handleSignOut} className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-red-500/10 text-[11px] font-bold text-red-400"><LogOut className="w-4 h-4" /> Terminate Session</button>
                       )}
@@ -589,13 +610,13 @@ const App = () => {
         </div>
 
         <div className="p-4 md:p-12">
-          {error && <div className="mb-6 p-4 md:p-5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3 text-left"><AlertCircle className="w-5 h-5 shrink-0" /><p className="text-[10px] md:text-xs font-bold uppercase tracking-wider">{error}</p></div>}
+          {error && <div className="mb-6 p-4 md:p-5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3 text-left animate-in slide-in-from-top-2"><AlertCircle className="w-5 h-5 shrink-0" /><p className="text-[10px] md:text-xs font-bold uppercase tracking-wider">{error}</p></div>}
 
           {step === 0 && (
             <div className="animate-in fade-in py-8 md:py-24 text-center max-w-4xl mx-auto space-y-10">
                <div className="space-y-8">
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 text-[9px] font-black uppercase tracking-[0.2em] mx-auto"><Activity className="w-3 h-3" /> Professional Lab v2.0</div>
-                  <h2 className={`text-4xl md:text-8xl font-black tracking-tighter transition-all leading-tight ${t.textHead}`}>Create high-impact AI voiceover <span className="text-indigo-500">for your assets.</span></h2>
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 text-[9px] font-black uppercase tracking-widest mx-auto"><Activity className="w-3 h-3" /> Professional Lab v2.1</div>
+                  <h2 className={`text-4xl md:text-8xl font-black tracking-tighter leading-tight ${t.textHead}`}>Create high-impact AI voiceover <span className="text-indigo-500">for your assets.</span></h2>
                   <div className="flex flex-col items-center pt-8">
                      <button onClick={() => document.getElementById('imageInput').click()} className={`w-full sm:w-auto px-10 py-5 md:px-14 md:py-7 text-white rounded-[1.5rem] md:rounded-[2rem] font-black text-base md:text-xl shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-4 group ${t.accent}`}><Upload className="w-6 h-6 group-hover:animate-bounce" /> Add Your Media Asset</button>
                   </div>
@@ -638,35 +659,34 @@ const App = () => {
                <div className="flex flex-col gap-6 md:gap-8 text-left">
                   <div className="space-y-3">
                      <div className="flex items-center justify-between px-1">
-                        <label className={`font-black text-[10px] uppercase tracking-widest ${t.textBody}`}>Ad Script Master</label>
+                        <label className={`font-black text-[10px] uppercase tracking-widest ${t.textBody}`}>Script Master</label>
                         <button onClick={() => setShowMagicWand(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Magic Wand</button>
                      </div>
-                     <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type clean ad text here..." />
+                     <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type ad text here..." />
                   </div>
 
-                  {/* GRID ALIGNMENT FIX: 4 Equal Columns */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 items-end">
                     <div className="space-y-2">
                        <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody} opacity-60 px-1`}>Language</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} appearance-none cursor-pointer`} value={selectedLanguage.id} onChange={e => handleConfigChange('lang', e.target.value)}>
+                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer`} value={selectedLanguage.id} onChange={e => handleConfigChange('lang', e.target.value)}>
                           {LANGUAGES_LIST.map(l => <option key={l.id} value={l.id}>{l.label} {l.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
                        </select>
                     </div>
                     <div className="space-y-2">
                        <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody} opacity-60 px-1`}>AI Talent</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} appearance-none cursor-pointer`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
+                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.label} {v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
                        </select>
                     </div>
                     <div className="space-y-2">
                        <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody} opacity-60 px-1`}>Performance</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} appearance-none cursor-pointer`} value={selectedTone} onChange={e => handleConfigChange('tone', e.target.value)}>
+                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer`} value={selectedTone} onChange={e => handleConfigChange('tone', e.target.value)}>
                           {TONES.map(ton => <option key={ton.id} value={ton.id}>{ton.id} {ton.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
                        </select>
                     </div>
                     <div className="space-y-2">
                        <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody} opacity-60 px-1`}>Pace</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} appearance-none cursor-pointer`} value={selectedSpeed.label} onChange={e => setSelectedSpeed(SPEEDS.find(s => s.label === e.target.value))}>
+                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer`} value={selectedSpeed.label} onChange={e => setSelectedSpeed(SPEEDS.find(s => s.label === e.target.value))}>
                           {SPEEDS.map(s => <option key={s.label} value={s.label}>{s.label}</option>)}
                        </select>
                     </div>
@@ -679,11 +699,11 @@ const App = () => {
 
                   {audioUrl && !isGeneratingAudio && (
                      <div className={`p-6 md:p-8 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 border-2 animate-in slide-in-from-top-4 bg-slate-900/50 border-white/5 shadow-2xl`}>
-                        <div className="flex-1 w-full space-y-3">
-                           <p className="text-indigo-400 font-black text-[9px] md:text-[10px] uppercase tracking-widest px-2">Master Production Clip</p>
+                        <div className="flex-1 w-full space-y-3 text-center md:text-left">
+                           <p className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">Audition Preview</p>
                            <audio controls src={audioUrl} className="w-full h-10 invert opacity-80" />
                         </div>
-                        <button onClick={() => setStep(3)} className={`w-full md:w-auto px-12 py-5 rounded-2xl font-black text-sm md:text-base whitespace-nowrap shadow-xl flex items-center justify-center gap-3 ${t.accent} active:scale-95`}><Video className="w-5 h-5" /> Mastering Studio</button>
+                        <button onClick={() => setStep(3)} className={`w-full md:w-auto px-12 py-5 rounded-2xl font-black text-sm md:text-base shadow-xl flex items-center justify-center gap-3 ${t.accent} active:scale-95`}><Video className="w-5 h-5" /> Mastering Studio</button>
                      </div>
                   )}
 
@@ -693,7 +713,7 @@ const App = () => {
           )}
 
           {step === 3 && (
-            <div className="py-4 md:py-6 space-y-10 animate-in fade-in duration-700 max-w-5xl mx-auto">
+            <div className="py-4 md:py-6 space-y-10 animate-in fade-in max-w-5xl mx-auto">
               <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
                 <div className="relative group mx-auto bg-black rounded-[2.5rem] md:rounded-[3.5rem] overflow-hidden shadow-2xl border-[8px] md:border-[12px] border-slate-800 w-[240px] md:w-[280px]" style={{ aspectRatio: selectedRatio.ratio }}>
                    {assetType === 'image' ? <img src={image} className="w-full h-full object-cover" alt="Mix" /> : <video ref={previewVideoRef} src={image} muted className="w-full h-full object-cover" />}
@@ -719,7 +739,7 @@ const App = () => {
                       </button>
                       {isCreatingVideo && (
                          <div className="space-y-2 px-2 animate-in fade-in">
-                            <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-indigo-400"><span>Frame-by-frame synthesis</span><span>{masteringProgress}%</span></div>
+                            <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-indigo-400"><span>Synthesis</span><span>{masteringProgress}%</span></div>
                             <div className="h-1 bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-indigo-600 transition-all duration-300" style={{ width: `${masteringProgress}%` }} /></div>
                          </div>
                       )}
@@ -760,7 +780,7 @@ const App = () => {
                 setIsGeneratingScript(true); try {
                   const prompt = `Ad copywriter. Describe: "${magicPrompt}". Language: ${selectedLanguage.label}. Write 15s commercial script. Max 40 words. Plain text only.`;
                   const res = await callGemini(prompt, BRAIN_MODEL);
-                  setText(res.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, '') || ""); setShowMagicWand(false);
+                  setText(res.candidates?.[0]?.content?.[0]?.parts?.[0]?.text?.replace(/```/g, '') || ""); setShowMagicWand(false);
                 } catch (e) { setError(e.message); } finally { setIsGeneratingScript(false); }
             }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3">
               {isGeneratingScript ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}

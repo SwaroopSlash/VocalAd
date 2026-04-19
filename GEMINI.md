@@ -1,5 +1,9 @@
 # AdVocalize Pro - Roadmap & Versions
 
+## Core Mandates & Governance
+- **Logic Integrity:** CRITICAL. Any major decision or refactor that affects the application flow, backend logic, or core functional paths (Auth, Payments, Engine) MUST receive explicit user permission before implementation.
+- **Stability Over Aesthetics:** Functional logic must never be traded off for UI design decisions unless specifically requested.
+
 ## Stage 1: Core Engine (V1)
 - [x] 4-Step Ad Creation Flow.
 - [x] Gemini 1.5 Brain + 3.1 TTS integration.
@@ -9,34 +13,23 @@
 ## Stage 2: User System (V2)
 - [x] Firebase Auth (Google & Email).
 - [x] Anonymous guest session linking.
-- [x] CRM: Saving user profiles (emails) to Firestore.
-- [x] Configuration Locking (Free users restricted to 1 voice/tone/speed).
-- [x] Tier-based Voice Generation Limits (3 for free, 5 then credit-based for pro).
-- [x] Granular Limit Modals (Explicit feedback for voice/credit/download limits).
+- [x] Tier-based Voice Generation Limits.
 - [x] Audio-Only download option (.wav).
 
 ## Stage 3: Economy (V3)
-- [x] Transition to `creditsRemaining` system (replacing `videoCount`).
+- [x] Transition to `creditsRemaining` system.
 - [x] **New:** VocalAd.ai Branding & Professional UI.
 - [x] **New:** Fit vs. Fill Choice with Blurred Background fallback.
-- [x] AI Script Architect (Magic Wand tool for script generation).
-- [x] Mobile Ergonomics Pass (Above-the-fold previews & Logic-first layout).
-- [x] UPI Payment Modal (One-Tap Redirect).
-- [x] **Infrastructure:** Migrated to Firebase Functions v2 for better CORS & performance.
+- [x] AI Script Architect (Magic Wand tool).
+- [x] **Infrastructure:** Migrated to Firebase Functions v2 for better CORS.
 - [x] **Security:** Fully operational Razorpay Live integration via Secret Manager.
 - [x] **Fixed:** Resolved 401 Auth errors and hidden character key bugs.
-- [/] Manual/Automatic payment verification logic. (Automatic webhook in progress)
 
 ## Stage 4: Professional Polish & UX (Current)
-- [ ] **Fix:** Resolve frozen frame bug in final video renderer.
-- [ ] **UX:** Consolidate Voice selection into a clean dropdown.
-- [ ] **Ergonomics:** Unified Mixing Player (remove separate simulation slider).
-- [ ] **Cleanup:** Remove redundant UI steps and simplify the user journey.
-
-## Testing & Quality Assurance
-- [x] Build `AdVocalizeLab.js` for automated API & Renderer health checks.
-- [x] Implement browser-side error logging to Firestore.
-- [x] **Debug Suite:** Added "Backend Test" (₹1.23) plan for end-to-end payment verification.
+- [x] **Fix:** Resolved frozen frame bug in renderer.
+- [x] **UX:** Consolidated Voice selection into dropdown.
+- [ ] **Mobile Ergonomics:** Final pass on studio card and high-density layout.
+- [ ] **Payments:** Final stability verification on live domain.
 
 ## Design Philosophy
 - **Style over Specs:** Use "WhatsApp Style" instead of "Vertical 1080x1920".
