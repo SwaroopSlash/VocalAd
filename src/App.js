@@ -1163,7 +1163,13 @@ const App = () => {
                               <p className="text-indigo-400 font-black text-[9px] md:text-[10px] tracking-widest uppercase">Master Audio Clip</p>
                               <span className="text-[10px] font-bold text-slate-500">{(audioBlob?.size / 1024).toFixed(1)} KB</span>
                            </div>
-                           <audio controls src={audioUrl} className="w-full h-10 md:h-12 invert opacity-80" />
+                           <audio 
+                              controls 
+                              controlsList="nodownload" 
+                              onContextMenu={(e) => e.preventDefault()}
+                              src={audioUrl} 
+                              className="w-full h-10 md:h-12 invert opacity-80" 
+                           />
                         </div>
                         <button onClick={() => setStep(3)} className={`w-full md:w-auto px-10 py-5 rounded-2xl font-black text-sm md:text-base whitespace-nowrap transition-all shadow-xl flex items-center justify-center gap-3 ${t.accent}`}>
                            <Video className="w-5 h-5" /> Mix with Assets
