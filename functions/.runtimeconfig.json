@@ -1,0 +1,7 @@
+{
+  "razorpay": {
+    "key_secret": "i5EBE9VSBvOY4mYBZmLmhhAL",
+    "key_id": "rzp_live_SfCZvOMFGefR8r",
+    "webhook_secret": "vocalad_secure_hook_2026"
+  }
+}

@@ -44,7 +44,6 @@ import {
   Play,
   Pause,
   Languages,
-  Layers,
   Activity,
   LogOut,
   Settings,
@@ -245,8 +244,7 @@ const App = () => {
         setUser(u);
         if (!u.isAnonymous) {
           setShowAuthModal(false);
-          const profileRef = doc(db, 'artifacts', appId, 'users', u.uid);
-          await setDoc(profileRef, { email: u.email, lastLogin: new Date().toISOString(), uid: u.uid, displayName: u.displayName || "" }, { merge: true });
+          await setDoc(doc(db, 'artifacts', appId, 'users', u.uid), { email: u.email, lastLogin: new Date().toISOString(), uid: u.uid, displayName: u.displayName || "" }, { merge: true });
         }
         if (pendingDownloadType && !u.isAnonymous) { triggerDownload(pendingDownloadType); setPendingDownloadType(null); }
       }
@@ -305,32 +303,25 @@ const App = () => {
     catch (err) { console.error("Sign out failed", err); }
   };
 
-  // ARCHITECT'S SELF-HEALING LOADER
-  const loadRazorpay = () => new Promise((res) => {
-    if (window.Razorpay) return res(true);
-    const s = document.createElement("script");
-    s.src = "https://checkout.razorpay.com/v1/checkout.js";
-    s.onload = () => res(true);
-    s.onerror = () => res(false);
-    document.body.appendChild(s);
-  });
-
   const handleInitiatePayment = async () => {
-    // 1. Force check for SDK
-    const isLoaded = await loadRazorpay();
-    if (!isLoaded || !window.Razorpay) { 
-        setAuthError("Razorpay SDK not available. Check your internet or disable ad-blockers."); 
+    // DIAGNOSTIC 1: Check SDK Availability
+    if (!window.Razorpay) { 
+        setAuthError("Razorpay SDK was not found in window. Please disable ad-blockers and refresh."); 
         return; 
     }
 
     setIsSubmittingPayment(true); setAuthError("");
     try {
+      // DIAGNOSTIC 2: Check Firebase Callable
       const { getFunctions, httpsCallable } = await import('firebase/functions');
       const functions = getFunctions(app, 'us-central1');
       const createOrder = httpsCallable(functions, 'createOrderV2');
+      
       const orderData = await createOrder({ amount: selectedPlan.price, planId: selectedPlan.id });
 
-      if (!orderData?.data?.orderId) throw new Error("No Order ID returned from server.");
+      if (!orderData?.data?.orderId) {
+          throw new Error(`Server returned no Order ID. Raw response: ${JSON.stringify(orderData)}`);
+      }
 
       const options = {
         key: process.env.REACT_APP_RAZORPAY_KEY_ID || "rzp_live_SfCZvOMFGefR8r",
@@ -350,8 +341,9 @@ const App = () => {
       const rzp1 = new window.Razorpay(options);
       rzp1.open();
     } catch (err) { 
-      console.error("Payment Error:", err);
-      setAuthError(`Checkout Error: ${err.message || "Please try again."}`); 
+      console.error("Critical Payment Failure:", err);
+      // SHOW FULL TECHNICAL ERROR TO THE USER
+      setAuthError(`Checkout Failed: ${err.message || "Unknown Failure"}`); 
     } 
     finally { setIsSubmittingPayment(false); }
   };
@@ -369,7 +361,7 @@ const App = () => {
   const callGemini = async (prompt, model, isAudio = false) => {
     const activeKey = isAudio ? voiceApiKey : brainApiKey;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
-    const payload = { contents: [{ parts: [{ text: prompt }] }], ...(isAudio && { generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } } } }) };
+    const payload = { contents: [{ parts: [{ text: prompt }] }], ...(isAudio && { generationConfig: { responseModalalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } } } }) };
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!response.ok) { const err = await response.json(); return { error: true, message: err.error?.message }; }
     return await response.json();
@@ -497,8 +489,8 @@ const App = () => {
       case "out_of_credits": return { icon: <Video className="w-8 h-8" />, title: "Credits Exhausted", body: "Top up now to continue creating." };
       case "download_lock": return { icon: <Download className="w-8 h-8" />, title: "Claim Your Ad", body: "Sign in to save and download your work." };
       case "purchase_lock": return { icon: <CreditCard className="w-8 h-8" />, title: "Sign In to Upgrade", body: "Create an account to purchase credits." };
-      case "premium_locked": return { icon: <Sparkles className="w-8 h-8" />, title: "Premium Feature", body: "Upgrade to Creator Pro to unlock." };
-      default: return { icon: <Sparkles className="w-8 h-8" />, title: "Welcome to VocalAd.ai", body: "Sign in to access premium AI voices." };
+      case "premium_locked": return { icon: <Sparkles className="w-8 h-8" />, title: "Premium Feature", body: "Upgrade to Creator Pro to unlock advanced features." };
+      default: return { icon: <Sparkles className="w-8 h-8" />, title: "Welcome to VocalAd.ai", body: "Access premium AI tools and high-fidelity production." };
     }
   };
 
@@ -539,7 +531,7 @@ const App = () => {
               <button onClick={handleInitiatePayment} disabled={isSubmittingPayment} className={`w-full py-5 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-4 transition-all ${t.accent} active:scale-95 disabled:opacity-50`}>
                 {isSubmittingPayment ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-6 h-6" />} Checkout ₹{selectedPlan.price}
               </button>
-              {authError && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[11px] font-bold text-center">{authError}</div>}
+              {authError && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[11px] font-bold text-center leading-relaxed animate-in shake-1">{authError}</div>}
             </div>
           </div>
         </div>
@@ -665,28 +657,29 @@ const App = () => {
                      <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type ad text here..." />
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 items-end">
-                    <div className="space-y-2">
-                       <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody} opacity-60 px-1`}>Language</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer`} value={selectedLanguage.id} onChange={e => handleConfigChange('lang', e.target.value)}>
+                  {/* GRID ALIGNMENT: 4 Equal Columns */}
+                  <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 items-end">
+                    <div className="flex flex-col gap-2">
+                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Language</label>
+                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedLanguage.id} onChange={e => handleConfigChange('lang', e.target.value)}>
                           {LANGUAGES_LIST.map(l => <option key={l.id} value={l.id}>{l.label} {l.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
                        </select>
                     </div>
-                    <div className="space-y-2">
-                       <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody} opacity-60 px-1`}>AI Talent</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
+                    <div className="flex flex-col gap-2">
+                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">AI Talent</label>
+                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.label} {v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
                        </select>
                     </div>
-                    <div className="space-y-2">
-                       <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody} opacity-60 px-1`}>Performance</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer`} value={selectedTone} onChange={e => handleConfigChange('tone', e.target.value)}>
+                    <div className="flex flex-col gap-2">
+                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Performance</label>
+                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedTone} onChange={e => handleConfigChange('tone', e.target.value)}>
                           {TONES.map(ton => <option key={ton.id} value={ton.id}>{ton.id} {ton.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
                        </select>
                     </div>
-                    <div className="space-y-2">
-                       <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody} opacity-60 px-1`}>Pace</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer`} value={selectedSpeed.label} onChange={e => setSelectedSpeed(SPEEDS.find(s => s.label === e.target.value))}>
+                    <div className="flex flex-col gap-2">
+                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Pace</label>
+                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedSpeed.label} onChange={e => setSelectedSpeed(SPEEDS.find(s => s.label === e.target.value))}>
                           {SPEEDS.map(s => <option key={s.label} value={s.label}>{s.label}</option>)}
                        </select>
                     </div>
@@ -780,7 +773,7 @@ const App = () => {
                 setIsGeneratingScript(true); try {
                   const prompt = `Ad copywriter. Describe: "${magicPrompt}". Language: ${selectedLanguage.label}. Write 15s commercial script. Max 40 words. Plain text only.`;
                   const res = await callGemini(prompt, BRAIN_MODEL);
-                  setText(res.candidates?.[0]?.content?.[0]?.parts?.[0]?.text?.replace(/```/g, '') || ""); setShowMagicWand(false);
+                  setText(res.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, '') || ""); setShowMagicWand(false);
                 } catch (e) { setError(e.message); } finally { setIsGeneratingScript(false); }
             }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3">
               {isGeneratingScript ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}

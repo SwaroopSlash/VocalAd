@@ -24,12 +24,19 @@ exports.createOrderV2 = onCall({
     const k_id = (process.env.RAZORPAY_KEY_ID || "").trim();
     const k_sec = (process.env.RAZORPAY_KEY_SECRET || "").trim();
 
+    logger.info("PAYMENT_REQUEST", { 
+        uid: auth.uid, 
+        domain: request.rawRequest?.headers?.origin || "unknown",
+        userAgent: request.rawRequest?.headers?.["user-agent"]
+    });
+
     try {
       const razorpay = new Razorpay({ key_id: k_id, key_secret: k_sec });
       const order = await razorpay.orders.create({
         amount: Math.round(data.amount * 100),
         currency: "INR",
         receipt: `rcpt_${auth.uid.slice(0, 8)}_${Date.now()}`,
+        payment_capture: 1,
         notes: { userId: auth.uid, planId: data.planId }
       });
       
@@ -56,7 +63,7 @@ exports.razorpayWebhookV2 = onRequest({
 
     // Signature Verification
     const shasum = crypto.createHmac("sha256", secret);
-    shasum.update(JSON.stringify(req.body));
+    shasum.update(req.rawBody);
     const digest = shasum.digest("hex");
 
     if (signature !== digest) return res.status(403).send("Invalid signature");
