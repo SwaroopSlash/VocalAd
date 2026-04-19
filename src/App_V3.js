@@ -365,7 +365,7 @@ const App = () => {
       });
 
       const options = {
-        key: "rzp_test_SepHmmnMPWs7qO", // Your Razorpay Test Key ID
+        key: "rzp_live_SfCZvOMFGefR8r", // Your Razorpay Live Key ID
         amount: selectedPlan.price * 100,
         currency: "INR",
         name: "VocalAd AI",
@@ -966,9 +966,10 @@ const App = () => {
           )}
 
           {step === 2 && (
-            <div className="space-y-8 md:space-y-10 animate-in slide-in-from-bottom-10 duration-700">
-               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-12 text-left">
-                  <div className="space-y-4">
+            <div className="space-y-8 md:space-y-10 animate-in slide-in-from-bottom-10 duration-700 pb-24 md:pb-0">
+               <div className="flex flex-col lg:grid lg:grid-cols-2 gap-6 lg:gap-12 text-left">
+                  {/* Script Section - Always Top on Mobile */}
+                  <div className="space-y-4 order-1">
                      <div className="flex items-center justify-between px-1">
                         <label className={`font-black tracking-wider text-[9px] md:text-[10px] uppercase ${t.textBody}`}>Script Polish</label>
                         <button 
@@ -987,7 +988,8 @@ const App = () => {
                      </button>
                   </div>
 
-                  <div className="space-y-6 md:space-y-8">
+                  {/* Settings Section - Below on Mobile, Side by Side on Desktop */}
+                  <div className="space-y-6 md:space-y-8 order-2">
                      <div className="px-1"><label className={`font-black tracking-wider text-[9px] md:text-[10px] uppercase ${t.textBody}`}>Fine-Tune Talent</label></div>
                      <div className="grid grid-cols-1 xs:grid-cols-2 gap-4 md:gap-6">
                         <div className="space-y-2">
@@ -1055,12 +1057,25 @@ const App = () => {
                         </div>
                      </div>
                   )}
+
+                  {/* Desktop Preview */}
                   {audioUrl && !isGeneratingAudio && (
-                     <div className={`p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 md:gap-8 border-4 animate-in zoom-in-95 max-w-3xl mx-auto text-left shadow-2xl transition-all ${t.accent} text-white`}>
+                     <div className={`hidden md:flex p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex-col md:flex-row items-center justify-between gap-6 md:gap-8 border-4 animate-in zoom-in-95 max-w-3xl mx-auto text-left shadow-2xl transition-all ${t.accent} text-white`}>
                         <div className="flex-1 w-full"><p className="text-white/80 font-black text-[9px] md:text-[10px] tracking-widest uppercase mb-3 md:mb-4 px-2">Voiceover Preview</p><audio controls src={audioUrl} className="w-full h-10 md:h-12" /></div>
                         <button onClick={() => setStep(3)} className="w-full md:w-auto bg-white text-indigo-600 px-8 py-4 md:px-10 md:py-5 rounded-xl md:rounded-2xl font-black text-sm md:text-base whitespace-nowrap hover:bg-slate-100 transition-all shadow-xl">Confirm & Mix</button>
                      </div>
                   )}
+
+                  {/* Mobile Sticky Footer Action */}
+                  {audioUrl && !isGeneratingAudio && (
+                     <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-900/80 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3 md:hidden z-50 animate-in slide-in-from-bottom-full duration-500">
+                        <audio src={audioUrl} controls className="w-full h-8 opacity-80" />
+                        <button onClick={() => setStep(3)} className={`w-full py-4 text-white rounded-xl font-black text-sm uppercase tracking-widest shadow-2xl ${t.accent}`}>
+                           Confirm & Mix Ad
+                        </button>
+                     </div>
+                  )}
+
                   <div className="flex justify-between items-center max-w-2xl mx-auto w-full">
                      <button onClick={() => setStep(1)} className={`${t.textBody} font-black text-[10px] md:text-xs uppercase hover:text-indigo-500 transition-colors`}>Back</button>
                   </div>

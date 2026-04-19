@@ -104,15 +104,15 @@ const SPEEDS = [
 const THEMES = {
   studio: {
     name: "Studio Dark",
-    page: "bg-slate-950 text-slate-100",
-    card: "bg-slate-900/50 border-white/5 shadow-2xl backdrop-blur-xl",
-    nav: "bg-slate-900/80 border-b border-white/5",
-    textHead: "text-white font-['Plus_Jakarta_Sans'] font-extrabold tracking-tight",
-    textBody: "text-slate-400 font-['Plus_Jakarta_Sans']",
-    accent: "bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20",
-    input: "bg-slate-950/50 border-slate-800 text-white focus:border-indigo-500",
-    dropdown: "bg-slate-900/90 border-white/10 backdrop-blur-xl",
-    radius: "rounded-[2.5rem]",
+    page: "bg-mesh text-slate-100 min-h-screen",
+    card: "glass-card shadow-[0_0_100px_rgba(79,70,229,0.05)]",
+    nav: "bg-slate-950/40 border-b border-white/5 backdrop-blur-md",
+    textHead: "text-white font-['Plus_Jakarta_Sans'] font-black tracking-tight",
+    textBody: "text-slate-400 font-['Plus_Jakarta_Sans'] font-medium",
+    accent: "bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 btn-shimmer",
+    input: "bg-slate-950/50 border-slate-800 text-white focus:border-indigo-500/50 focus:ring-4 focus:ring-indigo-500/10",
+    dropdown: "bg-slate-900/90 border-white/10 backdrop-blur-3xl",
+    radius: "rounded-[3rem]",
     btnRadius: "rounded-2xl"
   }
 };
@@ -361,7 +361,7 @@ const App = () => {
       // Call our secure backend to create an Order
       const { getFunctions, httpsCallable } = await import('firebase/functions');
       const functions = getFunctions(app, 'us-central1'); // Explicitly set region
-      const createOrder = httpsCallable(functions, 'createOrder');
+      const createOrder = httpsCallable(functions, 'createOrderV2');
       
       const orderData = await createOrder({ 
         amount: selectedPlan.price, 
@@ -374,7 +374,7 @@ const App = () => {
       }
 
       const options = {
-        key: process.env.REACT_APP_RAZORPAY_KEY_ID || "rzp_live_Ser2nmQxdpXWGm",
+        key: process.env.REACT_APP_RAZORPAY_KEY_ID || "rzp_live_SfCZvOMFGefR8r",
         amount: selectedPlan.price * 100,
         currency: "INR",
         name: "VocalAd AI",
@@ -663,108 +663,112 @@ const App = () => {
       {/* UPI Payment Modal */}
       {showUPIModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-lg animate-in fade-in duration-300">
-          <div className={`${t.dropdown} border border-white/10 rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full space-y-8 shadow-2xl relative transition-all duration-500 overflow-hidden`}>
+          <div className={`${t.dropdown} border border-white/10 rounded-[2.5rem] p-6 md:p-10 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl relative transition-all duration-500 custom-scrollbar`}>
             {paymentSuccess && (
-              <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md z-[120] flex flex-col items-center justify-center gap-6 rounded-[2.5rem] animate-in fade-in zoom-in-95 duration-500">
+              <div className="sticky top-0 left-0 right-0 bottom-0 min-h-[400px] bg-slate-900/95 backdrop-blur-md z-[120] flex flex-col items-center justify-center gap-6 rounded-[2rem] animate-in fade-in zoom-in-95 duration-500">
                 <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center border-2 border-green-500/20 shadow-[0_0_50px_rgba(34,197,94,0.2)]"><CheckCircle className="w-12 h-12" /></div>
                 <div className="text-center space-y-2 px-8">
-                  <h3 className="text-3xl font-black text-white tracking-tight">Payment Recorded</h3>
-                  <p className="text-slate-400 text-sm leading-relaxed font-medium">Verification in progress. Credits will be added to your account shortly.</p>
+                  <h3 className="text-3xl font-black text-white tracking-tight">Order Created</h3>
+                  <p className="text-slate-400 text-sm leading-relaxed font-medium">Please complete the payment in the Razorpay window. Credits will be added once verified.</p>
+                  <button onClick={() => {setPaymentSuccess(false); setShowUPIModal(false);}} className="mt-4 px-6 py-2 bg-white/10 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-white/20 transition-all">Close</button>
                 </div>
               </div>
             )}
 
-            <button onClick={() => setShowUPIModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-[130]"><X className="w-6 h-6" /></button>
+            <button onClick={() => setShowUPIModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-[130] bg-black/20 p-2 rounded-full backdrop-blur-md"><X className="w-5 h-5" /></button>
             
-            <div className="space-y-2">
+            <div className="space-y-8">
               <div className="flex items-center gap-4">
-                 <div className="w-14 h-14 bg-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center shadow-inner"><ShieldCheck className="w-8 h-8" /></div>
+                 <div className="w-12 h-12 md:w-14 md:h-14 bg-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center shadow-inner shrink-0"><ShieldCheck className="w-6 h-6 md:w-8 md:h-8" /></div>
                  <div>
-                    <h3 className="text-2xl font-black text-white tracking-tight">Upgrade Your Vision</h3>
-                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">Secure UPI Payment Engine</p>
+                    <h3 className="text-xl md:text-2xl font-black text-white tracking-tight">Upgrade Your Vision</h3>
+                    <p className="text-slate-500 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em]">Secure Checkout Engine</p>
                  </div>
               </div>
-            </div>
 
-            {/* Plan Selector */}
-            <div className="space-y-4">
-              {!showAllPlans ? (
-                <div className="p-6 rounded-3xl border-2 border-emerald-500/30 bg-emerald-500/10 shadow-lg shadow-emerald-500/5 text-center space-y-2 animate-in fade-in zoom-in-95">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Most Popular</p>
-                  <h4 className="text-3xl font-black text-white">1 Credit / ₹10</h4>
-                  <p className="text-[11px] text-slate-500 font-medium">Perfect for a quick single video export.</p>
-                  <button 
-                    onClick={() => {
-                      setSelectedPlan(PLANS.find(p => p.id === 'single'));
-                      setShowAllPlans(true);
-                    }} 
-                    className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 transition-colors uppercase tracking-widest pt-2 underline underline-offset-4"
-                  >
-                    View Bulk Savings
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3 animate-in fade-in slide-in-from-top-4">
-                  <div className="grid grid-cols-1 gap-3">
-                    {PLANS.map(plan => (
-                      <button 
-                        key={plan.id}
-                        onClick={() => setSelectedPlan(plan)}
-                        className={`p-5 rounded-3xl border-2 transition-all text-left flex items-center justify-between group relative overflow-hidden ${selectedPlan.id === plan.id ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/5' : 'border-white/5 hover:border-white/10 bg-white/5'}`}
-                      >
-                        {selectedPlan.id === plan.id && <div className="absolute top-0 right-0 p-2 bg-indigo-500 text-white rounded-bl-xl"><CheckCircle className="w-3 h-3" /></div>}
-                        <div className="space-y-1">
-                          <p className={`text-[10px] font-black uppercase tracking-widest ${selectedPlan.id === plan.id ? 'text-indigo-400' : 'text-slate-500'}`}>{plan.label}</p>
-                          <h4 className="text-xl font-black text-white">{plan.credits} Credits</h4>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-2xl font-black text-white">₹{plan.price}</p>
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">One-time</p>
-                        </div>
-                      </button>
-                    ))}
+              {/* Plan Selector */}
+              <div className="space-y-4">
+                {!showAllPlans ? (
+                  <div className="p-6 md:p-8 rounded-[2rem] border-2 border-emerald-500/30 bg-emerald-500/5 shadow-lg shadow-emerald-500/5 text-center space-y-3 animate-in fade-in zoom-in-95">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">Current Selection</p>
+                    <h4 className="text-2xl md:text-3xl font-black text-white">{selectedPlan.credits || selectedPlan.label} {selectedPlan.credits ? 'Credits' : ''} / ₹{selectedPlan.price}</h4>
+                    <p className="text-[11px] text-slate-500 font-medium">Perfect for immediate creative needs.</p>
+                    <button 
+                      onClick={() => setShowAllPlans(true)} 
+                      className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 transition-colors uppercase tracking-widest pt-2 underline underline-offset-4"
+                    >
+                      View All Bulk Plans
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => setShowAllPlans(false)} 
-                    className="w-full text-center text-[10px] font-black text-slate-500 hover:text-white transition-colors uppercase tracking-widest"
-                  >
-                    Back to Quick Top-up
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* UPI Action Area */}
-            <div className="bg-black/40 rounded-[2.5rem] p-8 border border-white/5 space-y-6 shadow-inner text-center">
-               <div className="space-y-4">
-                  <div className="w-20 h-20 bg-indigo-500/10 text-indigo-400 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-indigo-500/20 shadow-inner">
-                    <Smartphone className="w-10 h-10" />
+                ) : (
+                  <div className="space-y-3 animate-in fade-in slide-in-from-top-4">
+                    <div className="grid grid-cols-1 gap-3">
+                      {PLANS.map(plan => (
+                        <button 
+                          key={plan.id}
+                          onClick={() => setSelectedPlan(plan)}
+                          className={`p-4 md:p-5 rounded-2xl md:rounded-3xl border-2 transition-all text-left flex items-center justify-between group relative overflow-hidden ${selectedPlan.id === plan.id ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/5' : 'border-white/5 hover:border-white/10 bg-white/5'}`}
+                        >
+                          {selectedPlan.id === plan.id && <div className="absolute top-0 right-0 p-2 bg-indigo-500 text-white rounded-bl-xl"><CheckCircle className="w-3 h-3" /></div>}
+                          <div className="space-y-1">
+                            <p className={`text-[9px] font-black uppercase tracking-widest ${selectedPlan.id === plan.id ? 'text-indigo-400' : 'text-slate-500'}`}>{plan.label}</p>
+                            <h4 className="text-base md:text-lg font-black text-white">{plan.credits} Credits</h4>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl md:text-2xl font-black text-white">₹{plan.price}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <button 
+                      onClick={() => setShowAllPlans(false)} 
+                      className="w-full text-center text-[10px] font-black text-slate-500 hover:text-white transition-colors uppercase tracking-widest py-2"
+                    >
+                      Back to Selection
+                    </button>
                   </div>
-                  <h4 className="text-xl font-black text-white">Direct App Payment</h4>
-                  <p className="text-[13px] text-slate-400 font-medium leading-relaxed px-4">
-                    Pay <span className="text-white font-bold">₹{selectedPlan.price}</span> via GPay, PhonePe, or Paytm. Your request is tracked via your email <span className="text-indigo-400 font-bold">{user?.email}</span>.
-                  </p>
-               </div>
+                )}
+              </div>
 
-               <button 
-                  onClick={handleInitiatePayment}
-                  disabled={isSubmittingPayment}
-                  className={`w-full py-6 rounded-3xl font-black text-sm uppercase tracking-[0.2em] flex items-center justify-center gap-4 transition-all ${t.accent} shadow-2xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50`}
-               >
-                  {isSubmittingPayment ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-6 h-6" />}
-                  {isSubmittingPayment ? "Initiating..." : `Pay ₹${selectedPlan.price} with UPI`}
-               </button>
-
-               {authError && (
-                 <div className="flex items-center justify-center gap-2 text-red-400 animate-in shake-1">
-                    <AlertCircle className="w-3 h-3" />
-                    <p className="text-[10px] font-black uppercase tracking-wider">{authError}</p>
+              {/* UPI Action Area */}
+              <div className="bg-black/40 rounded-[2rem] p-6 md:p-8 border border-white/5 space-y-6 shadow-inner text-center">
+                 <div className="space-y-4">
+                    <div className="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto border border-indigo-500/20 shadow-inner">
+                      <CreditCard className="w-8 h-8" />
+                    </div>
+                    <h4 className="text-lg font-black text-white">Secure Payment</h4>
+                    <p className="text-[12px] text-slate-400 font-medium leading-relaxed px-2">
+                      Complete payment of <span className="text-white font-bold">₹{selectedPlan.price}</span>. Credits will be linked to <span className="text-indigo-400 font-bold">{user?.email}</span>.
+                    </p>
                  </div>
-               )}
 
-               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pt-2">Credits will be added after verification</p>
+                 <button 
+                    onClick={handleInitiatePayment}
+                    disabled={isSubmittingPayment}
+                    className={`w-full py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] flex items-center justify-center gap-4 transition-all ${t.accent} shadow-2xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50`}
+                 >
+                    {isSubmittingPayment ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-6 h-6" />}
+                    {isSubmittingPayment ? "Preparing..." : "Checkout Now"}
+                 </button>
+
+                 {authError && (
+                   <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center justify-center gap-2 text-red-400 animate-in shake-1">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <p className="text-[11px] font-bold leading-tight">{authError}</p>
+                   </div>
+                 )}
+
+                 <div className="flex items-center justify-center gap-4 pt-2">
+                    <div className="flex -space-x-2">
+                       <div className="w-6 h-6 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-[8px] font-bold">UPI</div>
+                       <div className="w-6 h-6 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-[8px] font-bold">CC</div>
+                       <div className="w-6 h-6 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-[8px] font-bold">DC</div>
+                    </div>
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">PCI-DSS Compliant</p>
+                 </div>
+              </div>
+              <p className="text-center text-[9px] text-slate-600 font-bold uppercase tracking-widest pb-4">VocalAd Engine v3.0 Production Ready</p>
             </div>
-            <p className="text-center text-[9px] text-slate-600 font-bold uppercase tracking-widest">Trust & Security by VocalAd Engine</p>
           </div>
         </div>
       )}
@@ -905,48 +909,68 @@ const App = () => {
            <div className="flex items-center gap-2 md:gap-4 relative" ref={dropdownRef}>
               <button 
                 onClick={handlePurchase}
-                className="bg-black/10 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[9px] md:text-[10px] font-black tracking-widest border border-black/5 flex items-center gap-1.5 md:gap-2 hover:bg-black/20 transition-all"
+                className="bg-indigo-500/10 px-3 py-1.5 md:px-5 md:py-2.5 rounded-full text-[10px] md:text-[11px] font-black tracking-widest border border-indigo-500/20 flex items-center gap-1.5 md:gap-2.5 hover:bg-indigo-500/20 transition-all shadow-lg shadow-indigo-500/5 group"
               >
-                 <ShieldCheck className="w-3 h-3 md:w-3.5 md:h-3.5 text-indigo-500" />
-                 <span className="hidden xs:inline">{usage.creditsRemaining ?? 0}</span> CREDITS
+                 <div className="w-4 h-4 md:w-5 md:h-5 bg-indigo-500 text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><ShieldCheck className="w-2.5 h-2.5 md:w-3.5 md:h-3.5" /></div>
+                 <span className="text-white font-extrabold">{usage.creditsRemaining ?? 0}</span>
+                 <span className="text-indigo-300 opacity-80">CREDITS</span>
               </button>
               
               <button 
                 onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-                className={`w-8 h-8 md:w-10 md:h-10 rounded-full border flex items-center justify-center transition-all overflow-hidden ${t.input}`}
+                className={`w-9 h-9 md:w-11 md:h-11 rounded-full border-2 flex items-center justify-center transition-all overflow-hidden ${showProfileDropdown ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-800'}`}
               >
-                 {user?.isAnonymous ? <User className="w-4 h-4 md:w-5 md:h-5" /> : <div className={`w-full h-full flex items-center justify-center font-black text-xs ${t.accent}`}>{user?.email?.charAt(0).toUpperCase()}</div>}
+                 {user?.isAnonymous ? <User className="w-4 h-4 md:w-5 md:h-5 text-slate-400" /> : <div className={`w-full h-full flex items-center justify-center font-black text-sm ${t.accent}`}>{user?.email?.charAt(0).toUpperCase()}</div>}
               </button>
 
               {showProfileDropdown && (
-                <div className={`absolute top-full right-0 mt-4 w-60 md:w-64 border rounded-2xl md:rounded-3xl shadow-2xl p-3 md:p-4 animate-in fade-in zoom-in-95 z-50 backdrop-blur-2xl transition-all ${t.dropdown}`}>
-                   <div className="px-2 py-3 border-b border-black/5 mb-2">
-                      <p className="text-[9px] md:text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1">{usage.tier} account</p>
-                      <p className={`text-xs md:sm font-bold truncate ${t.textHead}`}>{user?.isAnonymous ? "Guest Session" : user?.email}</p>
+                <div className={`absolute top-full right-0 mt-4 w-72 md:w-80 border rounded-[2rem] shadow-2xl p-4 md:p-6 animate-in fade-in zoom-in-95 z-50 backdrop-blur-2xl transition-all ${t.dropdown}`}>
+                   <div className="px-3 py-4 border-b border-white/5 mb-4 bg-white/5 rounded-2xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.2em]">Active Tier</p>
+                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${usage.tier === 'paid' ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                          {usage.tier || 'Free'}
+                        </span>
+                      </div>
+                      <p className={`text-sm font-black truncate text-white`}>{user?.isAnonymous ? "Guest Ad-Maker" : user?.email}</p>
+                      <div className="mt-3 flex items-center justify-between bg-black/40 p-3 rounded-xl border border-white/5">
+                        <div className="text-left">
+                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Available Balance</p>
+                          <p className="text-xl font-black text-white leading-none mt-1">{usage.creditsRemaining ?? 0} Credits</p>
+                        </div>
+                        <button onClick={handlePurchase} className="p-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg transition-all"><CreditCard className="w-4 h-4" /></button>
+                      </div>
                    </div>
-                   <div className="space-y-1">
+
+                   <div className="space-y-1.5">
                       <button onClick={() => { 
-                         // Usage listener handles this, but we can force a tiny update to trigger it
                          const usageRef = doc(db, 'artifacts', appId, 'users', user.uid, 'usage', 'stats');
                          updateDoc(usageRef, { lastRefresh: new Date().toISOString() });
                          setShowProfileDropdown(false);
-                      }} className={`w-full flex items-center gap-3 p-2.5 md:p-3 rounded-xl hover:bg-black/5 transition-all text-[11px] md:text-xs font-bold ${t.textBody} group`}>
-                         <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" /> Refresh Credits
+                      }} className={`w-full flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-all text-xs font-bold ${t.textBody} group`}>
+                         <span className="flex items-center gap-3">
+                            <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" /> Sync Credits
+                         </span>
+                         <span className="text-[9px] opacity-40">Just now</span>
                       </button>
-                      <button onClick={handlePurchase} className={`w-full flex items-center gap-3 p-2.5 md:p-3 rounded-xl hover:bg-black/5 transition-all text-[11px] md:text-xs font-bold ${t.textBody} group`}>
-                         <CreditCard className="w-4 h-4 group-hover:text-indigo-500" /> My Subscription
+                      
+                      <button onClick={handlePurchase} className={`w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all text-xs font-bold ${t.textBody} group`}>
+                         <ShieldCheck className="w-4 h-4 group-hover:text-indigo-500" /> Subscription Details
                       </button>
-                      <button className={`w-full flex items-center gap-3 p-2.5 md:p-3 rounded-xl hover:bg-black/5 transition-all text-[11px] md:text-xs font-bold ${t.textBody} group`}>
+                      
+                      <button className={`w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all text-xs font-bold ${t.textBody} group`}>
                          <Settings className="w-4 h-4 group-hover:text-indigo-500" /> Preferences
                       </button>
-                      <div className="h-px bg-black/5 my-2" />
+
+                      <div className="h-px bg-white/5 my-3" />
+                      
                       {user?.isAnonymous ? (
-                        <button onClick={() => { setAuthMode('login'); setShowAuthModal(true); setShowProfileDropdown(false); }} className={`w-full flex items-center gap-3 p-2.5 md:p-3 rounded-xl transition-all text-[11px] md:text-xs font-black text-white ${t.accent}`}>
-                           <User className="w-4 h-4" /> Sign In / Up
+                        <button onClick={() => { setAuthMode('login'); setShowAuthModal(true); setShowProfileDropdown(false); }} className={`w-full flex items-center gap-3 p-4 rounded-xl transition-all text-xs font-black text-white ${t.accent} shadow-xl shadow-indigo-600/20`}>
+                           <User className="w-4 h-4" /> Sign In / Create Account
                         </button>
                       ) : (
-                        <button onClick={handleSignOut} className={`w-full flex items-center gap-3 p-2.5 md:p-3 rounded-xl hover:bg-red-500/10 transition-all text-[11px] md:text-xs font-bold text-red-500 group`}>
-                           <LogOut className="w-4 h-4" /> Sign Out
+                        <button onClick={handleSignOut} className={`w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-500/10 transition-all text-xs font-bold text-red-400 group`}>
+                           <LogOut className="w-4 h-4" /> Sign Out from System
                         </button>
                       )}
                    </div>
@@ -1053,7 +1077,17 @@ const App = () => {
 
                   {/* Settings Section - Below on Mobile, Side by Side on Desktop */}
                   <div className="space-y-6 md:space-y-8 order-2">
-                     <div className="px-1"><label className={`font-black tracking-wider text-[9px] md:text-[10px] uppercase ${t.textBody}`}>Fine-Tune Talent</label></div>
+                     <div className="px-1 flex items-center justify-between">
+                        <label className={`font-black tracking-wider text-[9px] md:text-[10px] uppercase ${t.textBody}`}>Fine-Tune Talent</label>
+                        <div className="flex items-center gap-3">
+                           <div className="flex flex-col items-end">
+                              <p className={`text-[10px] font-black ${text.split(/\s+/).filter(x => x).length > (usage.tier === 'paid' ? 300 : 75) ? 'text-red-500' : 'text-indigo-400'}`}>
+                                 {text.split(/\s+/).filter(x => x).length} / {usage.tier === 'paid' ? '300' : '75'} Words
+                              </p>
+                              <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Est: {(text.split(/\s+/).filter(x => x).length / 2.5).toFixed(1)}s</p>
+                           </div>
+                        </div>
+                     </div>
                      <div className="grid grid-cols-1 xs:grid-cols-2 gap-4 md:gap-6">
                         <div className="space-y-2">
                            <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-60`}>Voice Tone</label>
@@ -1089,7 +1123,7 @@ const App = () => {
                      </div>
                      <div className="space-y-2">
                         <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-1 ${t.textBody} opacity-60`}>AI Voice Talent</label>
-                        <div className={`max-h-48 md:max-h-60 overflow-y-auto border-2 p-2 rounded-2xl md:rounded-3xl transition-all ${t.nav}`}>
+                        <div className={`max-h-48 md:max-h-60 overflow-y-auto border-2 p-2 rounded-2xl md:rounded-3xl transition-all ${t.nav} custom-scrollbar`}>
                            {VOICES.map((v, idx) => {
                               const isProFeature = idx !== 0; // Aoede is index 0 and is free
                               const isLocked = usage.tier !== 'paid' && isProFeature;
@@ -1121,20 +1155,18 @@ const App = () => {
                      </div>
                   )}
 
-                  {/* Desktop Preview */}
+                  {/* Redesigned Audio Block - Directly below generation */}
                   {audioUrl && !isGeneratingAudio && (
-                     <div className={`hidden md:flex p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] flex-col md:flex-row items-center justify-between gap-6 md:gap-8 border-4 animate-in zoom-in-95 max-w-3xl mx-auto text-left shadow-2xl transition-all ${t.accent} text-white`}>
-                        <div className="flex-1 w-full"><p className="text-white/80 font-black text-[9px] md:text-[10px] tracking-widest uppercase mb-3 md:mb-4 px-2">Voiceover Preview</p><audio controls src={audioUrl} className="w-full h-10 md:h-12" /></div>
-                        <button onClick={() => setStep(3)} className="w-full md:w-auto bg-white text-indigo-600 px-8 py-4 md:px-10 md:py-5 rounded-xl md:rounded-2xl font-black text-sm md:text-base whitespace-nowrap hover:bg-slate-100 transition-all shadow-xl">Confirm & Mix</button>
-                     </div>
-                  )}
-
-                  {/* Mobile Sticky Footer Action */}
-                  {audioUrl && !isGeneratingAudio && (
-                     <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-900/80 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3 md:hidden z-50 animate-in slide-in-from-bottom-full duration-500">
-                        <audio src={audioUrl} controls className="w-full h-8 opacity-80" />
-                        <button onClick={() => setStep(3)} className={`w-full py-4 text-white rounded-xl font-black text-sm uppercase tracking-widest shadow-2xl ${t.accent}`}>
-                           Confirm & Mix Ad
+                     <div className={`p-5 md:p-8 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 border-2 animate-in slide-in-from-top-4 max-w-4xl mx-auto text-left shadow-2xl transition-all w-full bg-slate-900/50 border-white/5`}>
+                        <div className="flex-1 w-full">
+                           <div className="flex items-center justify-between mb-4 px-2">
+                              <p className="text-indigo-400 font-black text-[9px] md:text-[10px] tracking-widest uppercase">Master Audio Clip</p>
+                              <span className="text-[10px] font-bold text-slate-500">{(audioBlob?.size / 1024).toFixed(1)} KB</span>
+                           </div>
+                           <audio controls src={audioUrl} className="w-full h-10 md:h-12 invert opacity-80" />
+                        </div>
+                        <button onClick={() => setStep(3)} className={`w-full md:w-auto px-10 py-5 rounded-2xl font-black text-sm md:text-base whitespace-nowrap transition-all shadow-xl flex items-center justify-center gap-3 ${t.accent}`}>
+                           <Video className="w-5 h-5" /> Mix with Assets
                         </button>
                      </div>
                   )}
