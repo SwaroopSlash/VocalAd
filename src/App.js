@@ -141,7 +141,9 @@ const App = () => {
 
   // --- Engine State ---
   const [step, setStep] = useState(0); 
-  const [image, setImage] = useState(null);
+  const [image, setImage] = useState(null); // This will hold the URL for preview
+  const [assetType, setAssetType] = useState('image'); // 'image' or 'video'
+  const [videoVolume, setVideoVolume] = useState(0.5); 
   const [selectedRatio, setSelectedRatio] = useState(RATIOS[2]);
   const [fitMode, setFitMode] = useState('cover'); // 'cover' or 'contain'
   const [selectedTone, setSelectedTone] = useState(TONES[0]);
@@ -555,63 +557,126 @@ const App = () => {
     setIsCreatingVideo(true);
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
-      const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-      const img = new Image(); img.src = image; await new Promise(r => img.onload = r);
+      const voiceBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
       
-      canvas.width = selectedRatio.width; canvas.height = selectedRatio.height;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = selectedRatio.width;
+      canvas.height = selectedRatio.height;
+
+      // Prepare Asset
+      let assetElement;
+      if (assetType === 'video') {
+        assetElement = document.createElement('video');
+        assetElement.src = image;
+        assetElement.muted = true;
+        assetElement.loop = true;
+        await new Promise(r => {
+          assetElement.onloadeddata = r;
+          assetElement.load();
+        });
+        assetElement.play();
+      } else {
+        assetElement = new Image();
+        assetElement.src = image;
+        await new Promise(r => assetElement.onload = r);
+      }
+
       const stream = canvas.captureStream(30);
       const audioStream = audioContext.createMediaStreamDestination();
-      const audioSource = audioContext.createBufferSource();
-      audioSource.buffer = audioBuffer; audioSource.connect(audioStream);
+      
+      // Voice Source
+      const voiceSource = audioContext.createBufferSource();
+      voiceSource.buffer = voiceBuffer;
+      voiceSource.connect(audioStream);
+
+      // Video Audio Source (if applicable)
+      if (assetType === 'video') {
+        const videoAudioSource = audioContext.createMediaElementSource(assetElement);
+        const videoGain = audioContext.createGain();
+        videoGain.gain.value = videoVolume;
+        videoAudioSource.connect(videoGain);
+        videoGain.connect(audioStream);
+      }
+
       const combinedStream = new MediaStream([...stream.getVideoTracks(), ...audioStream.stream.getAudioTracks()]);
       const mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus' });
-      const chunks = []; mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+      const chunks = [];
+      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+      
       mediaRecorder.onstop = async () => {
+        if (assetType === 'video') assetElement.pause();
         setFinalVideoUrl(URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })));
         const usageRef = doc(db, 'artifacts', appId, 'users', user.uid, 'usage', 'stats');
         await updateDoc(usageRef, { creditsRemaining: increment(-1) });
-        setIsCreatingVideo(false); setStep(4);
+        setIsCreatingVideo(false);
+        setStep(4);
       };
-      mediaRecorder.start(); audioSource.start();
+
+      mediaRecorder.start();
+      voiceSource.start();
+
       const startTime = performance.now();
       const animate = (time) => {
         const elapsed = (time - startTime) / 1000;
-        if (elapsed > audioBuffer.duration) { mediaRecorder.stop(); audioSource.stop(); return; }
-        
-        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Fit Logic
-        const imgRatio = img.width / img.height; 
+        if (elapsed > voiceBuffer.duration) {
+          mediaRecorder.stop();
+          voiceSource.stop();
+          return;
+        }
+
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const assetWidth = assetType === 'video' ? assetElement.videoWidth : assetElement.width;
+        const assetHeight = assetType === 'video' ? assetElement.videoHeight : assetElement.height;
+        const assetRatio = assetWidth / assetHeight;
         const canvasRatio = canvas.width / canvas.height;
+        
         let dw, dh, ox = 0, oy = 0;
 
         if (fitMode === 'cover') {
-          // Fill logic (current)
-          if (imgRatio > canvasRatio) { dh = canvas.height; dw = img.width * (canvas.height / img.height); ox = (canvas.width - dw) / 2; }
-          else { dw = canvas.width; dh = img.height * (canvas.width / img.width); oy = (canvas.height - dh) / 2; }
+          if (assetRatio > canvasRatio) {
+            dh = canvas.height;
+            dw = assetWidth * (canvas.height / assetHeight);
+            ox = (canvas.width - dw) / 2;
+          } else {
+            dw = canvas.width;
+            dh = assetHeight * (canvas.width / assetWidth);
+            oy = (canvas.height - dh) / 2;
+          }
         } else {
-          // Contain logic (Fit entire image)
-          if (imgRatio > canvasRatio) { dw = canvas.width; dh = img.height * (canvas.width / img.width); oy = (canvas.height - dh) / 2; }
-          else { dh = canvas.height; dw = img.width * (canvas.height / img.height); ox = (canvas.width - dw) / 2; }
-          
-          // Draw blurred background for contain mode
+          if (assetRatio > canvasRatio) {
+            dw = canvas.width;
+            dh = assetHeight * (canvas.width / assetWidth);
+            oy = (canvas.height - dh) / 2;
+          } else {
+            dh = canvas.height;
+            dw = assetWidth * (canvas.height / assetHeight);
+            ox = (canvas.width - dw) / 2;
+          }
+
+          // Blurred Background for Contain
           ctx.save();
           ctx.filter = 'blur(40px) brightness(0.4)';
-          const bW = canvasRatio > imgRatio ? canvas.height * imgRatio : canvas.width;
-          const bH = canvasRatio > imgRatio ? canvas.height : canvas.width / imgRatio;
-          ctx.drawImage(img, (canvas.width - bW*2)/2, (canvas.height - bH*2)/2, bW*2, bH*2);
+          const bW = canvasRatio > assetRatio ? canvas.height * assetRatio : canvas.width;
+          const bH = canvasRatio > assetRatio ? canvas.height : canvas.width / assetRatio;
+          ctx.drawImage(assetElement, (canvas.width - bW*2)/2, (canvas.height - bH*2)/2, bW*2, bH*2);
           ctx.restore();
         }
+
+        ctx.drawImage(assetElement, ox, oy, dw, dh);
+        ctx.fillStyle = 'rgba(0,0,0,0.05)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        ctx.drawImage(img, ox, oy, dw, dh);
-        ctx.fillStyle = 'rgba(0,0,0,0.1)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         requestAnimationFrame(animate);
       };
+
       requestAnimationFrame(animate);
-    } catch (err) { 
-      setError("Video rendering failed."); 
-      setIsCreatingVideo(false); 
+    } catch (err) {
+      console.error(err);
+      setError("Video rendering failed. Ensure your asset is valid.");
+      setIsCreatingVideo(false);
       logErrorToFirestore(err.message, "createVideo");
     }
   };
@@ -1009,10 +1074,14 @@ const App = () => {
                      </div>
                   </div>
                </div>
-               <input id="imageInput" type="file" className="hidden" accept="image/*" onChange={(e) => {
+               <input id="imageInput" type="file" className="hidden" accept="image/*,video/*" onChange={(e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const type = file.type.startsWith('video') ? 'video' : 'image';
+                setAssetType(type);
                 const reader = new FileReader();
                 reader.onload = (ev) => { setImage(ev.target.result); setStep(1); };
-                reader.readAsDataURL(e.target.files[0]);
+                reader.readAsDataURL(file);
               }} />
             </div>
           )}
@@ -1041,8 +1110,17 @@ const App = () => {
 
               {/* Above the fold Preview */}
               <div className="relative mx-auto bg-black rounded-[2.5rem] md:rounded-[3rem] overflow-hidden shadow-2xl transition-all duration-700 border-4 md:border-8 border-slate-700" style={{ width: '200px', mdWidth: '280px', aspectRatio: selectedRatio.ratio }}>
-                {fitMode === 'contain' && <img src={image} className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-150" alt="Background" />}
-                <img src={image} className={`w-full h-full relative z-10 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} opacity-90`} alt="Preview" />
+                {assetType === 'image' ? (
+                  <>
+                    {fitMode === 'contain' && <img src={image} className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-150" alt="Background" />}
+                    <img src={image} className={`w-full h-full relative z-10 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} opacity-90`} alt="Preview" />
+                  </>
+                ) : (
+                  <>
+                    {fitMode === 'contain' && <video src={image} muted autoPlay loop className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-150" />}
+                    <video src={image} muted autoPlay loop className={`w-full h-full relative z-10 ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} opacity-90`} />
+                  </>
+                )}
               </div>
 
               <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-2 md:pt-8">
@@ -1121,6 +1199,16 @@ const App = () => {
                            </select>
                         </div>
                      </div>
+                     {assetType === 'video' && (
+                        <div className="space-y-3 p-4 bg-black/20 rounded-2xl border border-white/5 shadow-inner">
+                           <div className="flex justify-between items-center">
+                              <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${t.textBody} opacity-80`}>Original Video Volume</label>
+                              <span className="text-[10px] font-black text-indigo-400">{Math.round(videoVolume * 100)}%</span>
+                           </div>
+                           <input type="range" min="0" max="1" step="0.01" value={videoVolume} onChange={(e) => setVideoVolume(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
+                           <p className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter italic text-center">Lower this for better AI Voice clarity (Ducking)</p>
+                        </div>
+                     )}
                      <div className="space-y-2">
                         <label className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-1 ${t.textBody} opacity-60`}>AI Voice Talent</label>
                         <div className={`max-h-48 md:max-h-60 overflow-y-auto border-2 p-2 rounded-2xl md:rounded-3xl transition-all ${t.nav} custom-scrollbar`}>
