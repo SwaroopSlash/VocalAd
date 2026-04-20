@@ -329,7 +329,7 @@ const App = () => {
       if (!result?.data?.orderId) throw new Error("Server failed to generate Order ID.");
 
       const options = {
-        key: process.env.REACT_APP_RAZORPAY_KEY_ID || "rzp_live_SfCZvOMFGefR8r",
+        key: process.env.REACT_APP_RAZORPAY_KEY_ID,
         amount: selectedPlan.price * 100,
         currency: "INR",
         name: "VocalAd AI",
