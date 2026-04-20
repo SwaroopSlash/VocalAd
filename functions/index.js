@@ -3,6 +3,7 @@ const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
+const https = require("https");
 const { logger } = require("firebase-functions");
 
 admin.initializeApp();
@@ -171,4 +172,114 @@ exports.razorpayWebhookV2 = onRequest({
       orderId
     });
   }
+});
+
+// ── Gemini REST helper ───────────────────────────────────────────────────────
+function callGeminiRest(model, payload, apiKey) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload);
+    const req = https.request({
+      hostname: "generativelanguage.googleapis.com",
+      path: `/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
+    }, (res) => {
+      let data = "";
+      res.on("data", c => data += c);
+      res.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("Failed to parse Gemini response")); } });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// ── generateVoice ────────────────────────────────────────────────────────────
+exports.generateVoice = onCall({
+  cors: true,
+  region: "us-central1",
+  secrets: ["GEMINI_VOICE_API_KEY", "GEMINI_BRAIN_API_KEY"],
+  timeoutSeconds: 120,
+  memory: "256MiB"
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to generate voice.");
+
+  const { text, voiceName, tone, speed } = request.data;
+  if (!text?.trim()) throw new HttpsError("invalid-argument", "Script text is required.");
+
+  const voiceKey = (process.env.GEMINI_VOICE_API_KEY || "").trim();
+  const brainKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
+  const VOICE_MODEL = "gemini-2.5-flash-preview-tts";
+  const VOICE_FALLBACK = "gemini-3.1-flash-tts-preview";
+  const BRAIN_MODEL = "gemini-2.5-flash";
+  const BRAIN_FALLBACK = "gemini-2.0-flash";
+
+  // Spell-check for longer scripts (non-critical — continue on failure)
+  let scriptToSpeak = text.trim();
+  if (scriptToSpeak.split(/\s+/).length > 15) {
+    try {
+      const spellPayload = { contents: [{ parts: [{ text: `Fix spelling errors and grammar only. Return ONLY the corrected text, same length and words. No additions or rewrites. Text: "${scriptToSpeak}"` }] }] };
+      let spellRes = await callGeminiRest(BRAIN_MODEL, spellPayload, brainKey);
+      if (spellRes.error) spellRes = await callGeminiRest(BRAIN_FALLBACK, spellPayload, brainKey);
+      const corrected = spellRes.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (corrected) scriptToSpeak = corrected;
+    } catch (e) {
+      logger.warn("SPELL_CHECK_FAILED", { msg: e.message, uid: request.auth.uid });
+    }
+  }
+
+  const ttsPrompt = `Deliver in a ${tone} tone, ${speed}:\n${scriptToSpeak}`;
+  const ttsPayload = {
+    contents: [{ parts: [{ text: ttsPrompt }] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } }
+    }
+  };
+
+  let ttsResult = await callGeminiRest(VOICE_MODEL, ttsPayload, voiceKey);
+  if (ttsResult.error) {
+    logger.warn("VOICE_PRIMARY_FAILED", { msg: ttsResult.error.message, uid: request.auth.uid });
+    ttsResult = await callGeminiRest(VOICE_FALLBACK, ttsPayload, voiceKey);
+    if (ttsResult.error) throw new HttpsError("internal", `Voice generation failed: ${ttsResult.error.message}`);
+  }
+
+  const inlineData = ttsResult.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+  if (!inlineData) throw new HttpsError("internal", "Voice engine returned no audio.");
+
+  logger.info("VOICE_GENERATED", { uid: request.auth.uid, voiceName });
+  return { audioBase64: inlineData.data, mimeType: inlineData.mimeType };
+});
+
+// ── generateScript (Magic Wand) ──────────────────────────────────────────────
+exports.generateScript = onCall({
+  cors: true,
+  region: "us-central1",
+  secrets: ["GEMINI_BRAIN_API_KEY"],
+  timeoutSeconds: 60
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to generate script.");
+
+  const { prompt, language } = request.data;
+  if (!prompt?.trim()) throw new HttpsError("invalid-argument", "Prompt is required.");
+
+  const apiKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
+  const BRAIN_MODEL = "gemini-2.5-flash";
+  const BRAIN_FALLBACK = "gemini-2.0-flash";
+
+  const fullPrompt = `You are an ad copywriter. Brief: "${prompt}". Language: ${language}.\nWrite a 15-second commercial script — max 40 words — containing ONLY words to be spoken aloud.\nYou MAY use these Gemini TTS expression tags sparingly: [excited], [warm], [serious], [whispers], [short pause], [medium pause], [playful], [curious], [laughs], [sighs].\nKeep all expression tags in English even if the script is in another language.\nNEVER include sound effects, music cues, physical actions, or scene directions.\nOutput the script only — no title, no labels, no explanation.`;
+
+  const payload = { contents: [{ parts: [{ text: fullPrompt }] }] };
+  let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
+  if (result.error) {
+    logger.warn("SCRIPT_PRIMARY_FAILED", { msg: result.error.message });
+    result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
+    if (result.error) throw new HttpsError("internal", result.error.message);
+  }
+
+  const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, "").trim();
+  if (!script) throw new HttpsError("internal", "AI returned empty script. Try a more descriptive prompt.");
+
+  logger.info("SCRIPT_GENERATED", { uid: request.auth.uid });
+  return { script };
 });

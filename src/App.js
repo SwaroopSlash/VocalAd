@@ -14,14 +14,15 @@ import {
   EmailAuthProvider,
   linkWithCredential
 } from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  updateDoc, 
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  updateDoc,
   onSnapshot,
   increment
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { 
   CheckCircle, 
   RefreshCw,
@@ -66,12 +67,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app, 'us-central1');
 const appId = 'advocalize-pro-v2'; // VERSION 2.1 STABLE
-
-const BRAIN_MODEL = "gemini-2.5-flash";
-const BRAIN_MODEL_FALLBACK = "gemini-2.0-flash";
-const VOICE_MODEL = "gemini-2.5-flash-preview-tts";
-const VOICE_MODEL_FALLBACK = "gemini-3.1-flash-tts-preview";
 
 const PLANS = [
   { id: 'single', label: 'Quick Top-up', credits: 1, price: 10, color: 'emerald' },
@@ -244,9 +241,6 @@ const App = () => {
   const [showAllPlans, setShowAllPlans] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-
-  const brainApiKey = process.env.REACT_APP_GEMINI_BRAIN_API_KEY || process.env.REACT_APP_GEMINI_API_KEY;
-  const voiceApiKey = process.env.REACT_APP_GEMINI_VOICE_API_KEY || process.env.REACT_APP_GEMINI_API_KEY;
 
   useEffect(() => { setError(null); }, [step]);
 
@@ -434,22 +428,6 @@ const App = () => {
     return new Blob([buffer], { type: 'audio/wav' });
   };
 
-  const callGemini = async (prompt, model, isAudio = false) => {
-    const activeKey = isAudio ? voiceApiKey : brainApiKey;
-    const payload = { contents: [{ parts: [{ text: prompt }] }], ...(isAudio && { generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } } } }) };
-    const tryModel = async (m) => {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${activeKey}`;
-      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!response.ok) { const err = await response.json(); return { error: true, message: err.error?.message, status: response.status }; }
-      return await response.json();
-    };
-    const result = await tryModel(model);
-    if (result.error) {
-      if (isAudio && model === VOICE_MODEL) return tryModel(VOICE_MODEL_FALLBACK);
-      if (!isAudio && model === BRAIN_MODEL) return tryModel(BRAIN_MODEL_FALLBACK);
-    }
-    return result;
-  };
 
   const handleConfigChange = (type, val) => {
     const isPremium = (type === 'lang' && LANGUAGES_LIST.find(l => l.id === val)?.premium) ||
@@ -472,25 +450,22 @@ const App = () => {
     setIsGeneratingAudio(true);
     const newCount = localVoiceCount + 1;
     setLocalVoiceCount(newCount);
-    setAudioProgress(20);
+    setAudioProgress(10);
+    const progressInterval = setInterval(() => {
+      setAudioProgress(p => p < 85 ? p + 5 : p);
+    }, 1200);
     try {
-      // Minimal correction only for longer scripts — never expand or dramatise
-      let scriptToSpeak = text.trim();
-      if (scriptToSpeak.split(/\s+/).length > 15) {
-        const res1 = await callGemini(
-          `Fix spelling errors and grammar only. Return ONLY the corrected text, same length and words. No additions or rewrites. Text: "${scriptToSpeak}"`,
-          BRAIN_MODEL
-        );
-        if (!res1.error) scriptToSpeak = res1.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || scriptToSpeak;
-      }
-      setAudioProgress(60);
-      const ttsPrompt = `Deliver in a ${selectedTone} tone, ${selectedSpeed.instruction}:\n${scriptToSpeak}`;
-      const res2 = await callGemini(ttsPrompt, VOICE_MODEL, true);
-      if (res2.error) throw new Error(res2.message);
-      const inlineData = res2.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-      if (!inlineData) throw new Error("Voice engine error.");
-      const sampleRate = parseInt(inlineData.mimeType.match(/sampleRate=(\d+)/)?.[1] || "24000");
-      const binaryString = atob(inlineData.data);
+      const generateVoiceFn = httpsCallable(functions, 'generateVoice');
+      const result = await generateVoiceFn({
+        text: text.trim(),
+        voiceName: selectedVoice,
+        tone: selectedTone,
+        speed: selectedSpeed.instruction
+      });
+      clearInterval(progressInterval);
+      const { audioBase64, mimeType } = result.data;
+      const sampleRate = parseInt((mimeType || '').match(/sampleRate=(\d+)/)?.[1] || "24000");
+      const binaryString = atob(audioBase64);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
       const blob = pcmToWav(bytes.buffer, sampleRate);
@@ -501,7 +476,11 @@ const App = () => {
       setTimeout(() => { setIsGeneratingAudio(false); setAudioProgress(0); }, 500);
       if (newCount === 2) { setSessionToast("3 voices left this session"); setTimeout(() => setSessionToast(null), 3000); }
       else if (newCount === 4) { setSessionToast("Last voice remaining — choose your best take!"); setTimeout(() => setSessionToast(null), 4000); }
-    } catch (err) { setError(err.message); setIsGeneratingAudio(false); }
+    } catch (err) {
+      clearInterval(progressInterval);
+      setError(err.message);
+      setIsGeneratingAudio(false);
+    }
   };
 
   const previewVoice = async () => {
@@ -1017,12 +996,9 @@ const App = () => {
                 if (!magicPrompt.trim()) return;
                 setIsGeneratingScript(true); setAuthError("");
                 try {
-                  const prompt = `You are an ad copywriter. Brief: "${magicPrompt}". Language: ${selectedLanguage.label}.\nWrite a 15-second commercial script — max 40 words — containing ONLY words to be spoken aloud.\nYou MAY use these Gemini TTS expression tags sparingly for vocal impact: [excited], [warm], [serious], [whispers], [short pause], [medium pause], [playful], [curious], [laughs], [sighs].\n${selectedLanguage.id !== 'en-IN' ? 'Keep all expression tags in English even if the script is in another language.\n' : ''}NEVER include sound effects, music cues, physical actions, or scene directions — no [knock on door], no [music plays], no SFX, no SSML.\nOutput the script only — no title, no labels, no explanation.`;
-                  const res = await callGemini(prompt, BRAIN_MODEL);
-                  if (res.error) throw new Error(res.message || "Gemini API error. Check your API key.");
-                  const generated = res.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, '').trim();
-                  if (!generated) throw new Error("AI returned empty script. Try a more descriptive prompt.");
-                  setText(generated); setShowMagicWand(false);
+                  const generateScriptFn = httpsCallable(functions, 'generateScript');
+                  const result = await generateScriptFn({ prompt: magicPrompt.trim(), language: selectedLanguage.label });
+                  setText(result.data.script); setShowMagicWand(false);
                 } catch (e) { setAuthError(e.message); } finally { setIsGeneratingScript(false); }
             }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3">
               {isGeneratingScript ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
