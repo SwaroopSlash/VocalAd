@@ -258,21 +258,23 @@ const App = () => {
     const unsubscribe = onSnapshot(usageRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.creditsRemaining === undefined) {
-          const initial = data.tier === 'paid' ? 10 : 3;
-          const remaining = Math.max(0, initial - (data.videoCount || 0));
-          setUsage({ ...data, creditsRemaining: remaining });
-          updateDoc(usageRef, { creditsRemaining: remaining });
-        } else {
-            // FIX: If we were waiting for payment, and credits just went up, show success!
-            if (isSubmittingPayment && data.creditsRemaining > usage.creditsRemaining) {
-                setPaymentSuccess(true);
-                setIsSubmittingPayment(false);
-                setTimeout(() => setShowUPIModal(false), 3000);
-            }
-            setUsage(data);
+        
+        // ARCHITECT'S SYNC LOGIC:
+        // If we were waiting for a payment, and credits just increased, trigger success!
+        if (isSubmittingPayment && (data.creditsRemaining > (usage.creditsRemaining || 0))) {
+            console.log("SYNC_SUCCESS: Credits detected in Firestore.");
+            setPaymentSuccess(true);
+            setIsSubmittingPayment(false);
+            // Close modal after showing success for 4 seconds
+            setTimeout(() => {
+                setShowUPIModal(false);
+                setPaymentSuccess(false);
+            }, 4000);
         }
-      } else setDoc(usageRef, { creditsRemaining: 3, tier: 'free', videoCount: 0, voiceSamples: 0 });
+        setUsage(data);
+      } else {
+        setDoc(usageRef, { creditsRemaining: 3, tier: 'free', videoCount: 0, voiceSamples: 0 });
+      }
     }, (err) => console.error("Usage listener error:", err));
     return () => unsubscribe();
   }, [user, isSubmittingPayment, usage.creditsRemaining]);

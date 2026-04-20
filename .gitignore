@@ -23,3 +23,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 firebase-debug.log
+
+# images
+image/
+image
+*.png
+*.jpg
+*.jpeg
