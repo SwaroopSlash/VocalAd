@@ -217,11 +217,18 @@ const App = () => {
     a.addEventListener('loadedmetadata', updateDuration);
     if (a.duration) setPreviewDuration(a.duration);
     if (!isPreviewPlaying) { a.pause(); if (v) v.pause(); return; }
+    // For AI Director, wire up the loop-back handler on the preview element
+    if (v && assetType === 'video' && videoMode === 'ai_director') {
+      const safeOffset = Math.min(videoStartOffset, v.duration - 0.5);
+      const onEnded = () => { v.currentTime = safeOffset; v.play().catch(() => {}); };
+      v.addEventListener('ended', onEnded);
+      v._aiDirectorCleanup = () => v.removeEventListener('ended', onEnded);
+    }
     const syncPreview = () => {
       if (!isPreviewPlaying) return;
       if (a.paused && isPreviewPlaying) { setIsPreviewPlaying(false); return; }
       setPreviewTime(a.currentTime);
-      if (v && assetType === 'video') {
+      if (v && assetType === 'video' && videoMode !== 'ai_director') {
         const aPos = a.currentTime;
         const vDur = v.duration;
         const expected = videoMode === 'loop' ? aPos % vDur : Math.min(aPos, vDur - 0.1);
@@ -230,8 +237,12 @@ const App = () => {
       requestAnimationFrame(syncPreview);
     };
     if (isPreviewPlaying) { a.play().catch(() => setIsPreviewPlaying(false)); if (v && assetType === 'video') v.play().catch(() => {}); requestAnimationFrame(syncPreview); }
-    return () => { a.removeEventListener('loadedmetadata', updateDuration); a.pause(); if (v) v.pause(); };
-  }, [isPreviewPlaying, videoMode, step, assetType]);
+    return () => {
+      a.removeEventListener('loadedmetadata', updateDuration);
+      a.pause();
+      if (v) { v.pause(); if (v._aiDirectorCleanup) { v._aiDirectorCleanup(); delete v._aiDirectorCleanup; } }
+    };
+  }, [isPreviewPlaying, videoMode, videoStartOffset, step, assetType]);
 
   const [error, setError] = useState(null);
   const [pendingDownloadType, setPendingDownloadType] = useState(null); 
