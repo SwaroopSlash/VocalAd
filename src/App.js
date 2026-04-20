@@ -118,10 +118,10 @@ const TONES = [
 ];
 
 const SPEEDS = [
-  { label: 'Normal (1.0x)', instruction: 'at a normal, natural pace' },
-  { label: 'Slow (0.8x)', instruction: 'at a slow, deliberate pace' },
-  { label: 'Brisk (1.25x)', instruction: 'at a brisk, energetic pace' },
-  { label: 'Fast (1.5x)', instruction: 'at a very fast, high-speed marketing pace' }
+  { label: 'Normal', instruction: 'at a normal, natural pace' },
+  { label: 'Slow', instruction: 'at a slow, deliberate pace' },
+  { label: 'Brisk', instruction: 'at a brisk, energetic pace' },
+  { label: 'Fast', instruction: 'at a very fast, high-speed marketing pace' }
 ];
 
 const THEMES = {
@@ -180,9 +180,9 @@ const App = () => {
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
-  const [audioBlob, setAudioBlob] = useState(null);
-  const [audioUrl, setAudioUrl] = useState(null);
-  const [prevAudioUrl, setPrevAudioUrl] = useState(null);
+  const [audioTakes, setAudioTakes] = useState([]); // [{url, blob}], index 0 = most recent
+  const [selectedTakeIdx, setSelectedTakeIdx] = useState(0);
+  const [sessionToast, setSessionToast] = useState(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -313,7 +313,7 @@ const App = () => {
   };
 
   const handleSignOut = async () => {
-    try { setLocalVoiceCount(0); setAudioUrl(null); setFinalVideoUrl(null); await signOut(auth); setShowProfileDropdown(false); } 
+    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); await signOut(auth); setShowProfileDropdown(false); }
     catch (err) { console.error("Sign out failed", err); }
   };
 
@@ -417,19 +417,28 @@ const App = () => {
   const generateAudio = async () => {
     if (!text.trim()) return;
     setError(null);
-    const isPro = usage.tier === 'paid';
-    if (!isPro && localVoiceCount >= 3) { setModalReason("voice_limit_free"); setShowAuthModal(true); return; }
-    if (isPro && localVoiceCount >= 5 && (localVoiceCount - 5) % 5 === 0) {
-      if (usage.creditsRemaining <= 0) { setModalReason("out_of_credits"); setShowAuthModal(true); return; }
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'usage', 'stats'), { creditsRemaining: increment(-1) });
+    if (localVoiceCount >= 5) {
+      if (usage.tier !== 'paid') { setModalReason("voice_limit_free"); setShowAuthModal(true); }
+      else setError("Session limit reached (5/5). Start a new project to generate more voices.");
+      return;
     }
-    setIsGeneratingAudio(true); setLocalVoiceCount(prev => prev + 1); setAudioProgress(20);
+    setIsGeneratingAudio(true);
+    const newCount = localVoiceCount + 1;
+    setLocalVoiceCount(newCount);
+    setAudioProgress(20);
     try {
-      const internalPrompt = `Theatrical script producer. Refine for high-converting ${selectedTone} commercial in ${selectedLanguage.label}. Deliver ${selectedSpeed.instruction}. Preserve original wording. Plain text only. Text: "${text}"`;
-      const res1 = await callGemini(internalPrompt, BRAIN_MODEL);
-      const refinedScript = res1.error ? text : res1.candidates?.[0]?.content?.parts?.[0]?.text;
+      // Minimal correction only for longer scripts — never expand or dramatise
+      let scriptToSpeak = text.trim();
+      if (scriptToSpeak.split(/\s+/).length > 15) {
+        const res1 = await callGemini(
+          `Fix spelling errors and grammar only. Return ONLY the corrected text, same length and words. No additions or rewrites. Text: "${scriptToSpeak}"`,
+          BRAIN_MODEL
+        );
+        if (!res1.error) scriptToSpeak = res1.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || scriptToSpeak;
+      }
       setAudioProgress(60);
-      const res2 = await callGemini(refinedScript, VOICE_MODEL, true);
+      const ttsPrompt = `Deliver in a ${selectedTone} tone, ${selectedSpeed.instruction}:\n${scriptToSpeak}`;
+      const res2 = await callGemini(ttsPrompt, VOICE_MODEL, true);
       if (res2.error) throw new Error(res2.message);
       const inlineData = res2.candidates?.[0]?.content?.parts?.[0]?.inlineData;
       if (!inlineData) throw new Error("Voice engine error.");
@@ -438,14 +447,20 @@ const App = () => {
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
       const blob = pcmToWav(bytes.buffer, sampleRate);
-      if (audioUrl) setPrevAudioUrl(audioUrl);
-      setAudioUrl(URL.createObjectURL(blob)); setAudioBlob(blob); setAudioProgress(100);
+      const url = URL.createObjectURL(blob);
+      setAudioTakes(prev => [{ url, blob }, ...prev].slice(0, 5));
+      setSelectedTakeIdx(0);
+      setAudioProgress(100);
       setTimeout(() => { setIsGeneratingAudio(false); setAudioProgress(0); }, 500);
+      if (newCount === 2) { setSessionToast("3 voices left this session"); setTimeout(() => setSessionToast(null), 3000); }
+      else if (newCount === 4) { setSessionToast("Last voice remaining — choose your best take!"); setTimeout(() => setSessionToast(null), 4000); }
     } catch (err) { setError(err.message); setIsGeneratingAudio(false); }
   };
 
   const createVideo = async () => {
-    if (!image || !audioBlob || !user) return;
+    if (!image || !audioTakes.length || !user) return;
+    const audioBlob = audioTakes[selectedTakeIdx]?.blob;
+    if (!audioBlob) return;
     if (usage.creditsRemaining <= 0) { setModalReason("out_of_credits"); setShowAuthModal(true); return; }
     setIsCreatingVideo(true); setMasteringProgress(0);
     try {
@@ -514,7 +529,7 @@ const App = () => {
   const triggerDownload = (type) => {
     const a = document.createElement('a');
     if (type === 'video' && finalVideoUrl) { a.href = finalVideoUrl; a.download = `VocalAd_${selectedRatio.id}.webm`; }
-    else if (type === 'audio' && audioUrl) { a.href = audioUrl; a.download = 'VocalAd_Master.wav'; }
+    else if (type === 'audio' && audioTakes[selectedTakeIdx]?.url) { a.href = audioTakes[selectedTakeIdx].url; a.download = 'VocalAd_Master.wav'; }
     else return;
     a.click();
   };
@@ -718,7 +733,7 @@ const App = () => {
                      <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type ad text here..." />
                      <div className="flex justify-between px-2 pt-1">
                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{text.trim() ? text.trim().split(/\s+/).length : 0} words · ~{Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / 2.5)}s</span>
-                       {usage.tier !== 'paid' && <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 2 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/3 free voices used</span>}
+                       <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
                      </div>
                   </div>
 
@@ -750,9 +765,9 @@ const App = () => {
                     </div>
                   </div>
 
-                  <button disabled={!text.trim() || isGeneratingAudio} onClick={generateAudio} className={`w-full py-5 md:py-6 text-white rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : t.accent}`}>
+                  <button disabled={!text.trim() || isGeneratingAudio || localVoiceCount >= 5} onClick={generateAudio} className={`w-full py-5 md:py-6 text-white rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : localVoiceCount >= 5 ? 'bg-slate-700 cursor-not-allowed' : t.accent}`}>
                     {isGeneratingAudio ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Volume2 className="w-7 h-7" />}
-                    {isGeneratingAudio ? "Producing Talent..." : "Generate AI Voiceover"}
+                    {isGeneratingAudio ? "Producing Talent..." : localVoiceCount >= 5 ? "Session Limit Reached — Start New Project" : audioTakes.length > 0 ? `Generate Take ${audioTakes.length + 1}` : "Generate AI Voiceover"}
                   </button>
                   {isGeneratingAudio && audioProgress > 0 && (
                     <div className="space-y-1.5 px-1 animate-in fade-in">
@@ -761,22 +776,27 @@ const App = () => {
                     </div>
                   )}
 
-                  {audioUrl && !isGeneratingAudio && (
-                     <div className={`p-6 md:p-8 rounded-[2.5rem] flex flex-col gap-4 border-2 animate-in slide-in-from-top-4 bg-slate-900/50 border-white/5 shadow-2xl`}>
-                        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                           <div className="flex-1 w-full space-y-3 text-center md:text-left">
-                              <p className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">Take 1 — Audition Preview</p>
-                              <audio controls src={audioUrl} className="w-full h-10 invert opacity-80" />
-                           </div>
-                           <button onClick={() => setStep(3)} className={`w-full md:w-auto px-12 py-5 rounded-2xl font-black text-sm md:text-base shadow-xl flex items-center justify-center gap-3 ${t.accent} active:scale-95`}><Video className="w-5 h-5" /> Mastering Studio</button>
+                  {audioTakes.length > 0 && !isGeneratingAudio && (
+                    <div className="space-y-3 animate-in slide-in-from-top-4">
+                      <div className="flex items-center justify-between px-1">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Your Takes</p>
+                        <button onClick={() => setStep(3)} className={`px-6 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 shadow-lg ${t.accent} active:scale-95`}><Video className="w-4 h-4" /> Go to Mastering Studio</button>
+                      </div>
+                      {audioTakes.map((take, idx) => (
+                        <div key={idx} className={`p-4 md:p-5 rounded-2xl border-2 transition-all ${idx === selectedTakeIdx ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-white/5 bg-slate-900/50'}`}>
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">
+                              Take {audioTakes.length - idx}{idx === 0 ? ' — Latest' : ''}
+                            </p>
+                            {idx === selectedTakeIdx
+                              ? <span className="text-[9px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-1 rounded-full">Selected for Export</span>
+                              : <button onClick={() => setSelectedTakeIdx(idx)} className="text-[9px] font-black text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-2 py-1 rounded-full transition-all">Use This Take</button>
+                            }
+                          </div>
+                          <audio controls src={take.url} className="w-full h-8 invert opacity-80" />
                         </div>
-                        {prevAudioUrl && (
-                           <div className="border-t border-white/5 pt-4 space-y-2">
-                              <p className="text-slate-500 font-black text-[9px] uppercase tracking-widest">Previous Take</p>
-                              <audio controls src={prevAudioUrl} className="w-full h-8 invert opacity-40" />
-                           </div>
-                        )}
-                     </div>
+                      ))}
+                    </div>
                   )}
 
                   <button onClick={() => setStep(1)} className={`w-full text-center ${t.textBody} font-black text-[9px] uppercase hover:text-indigo-500`}>Back to delivery style</button>
@@ -799,7 +819,7 @@ const App = () => {
                       </div>
                    </div>
                    {!isPreviewPlaying && <div onClick={() => setIsPreviewPlaying(true)} className="absolute inset-0 flex items-center justify-center bg-black/20 cursor-pointer"><div className="w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20"><Play className="w-7 h-7 md:w-8 md:h-8 fill-white ml-1" /></div></div>}
-                   <audio ref={previewAudioRef} src={audioUrl} onEnded={() => setIsPreviewPlaying(false)} className="hidden" />
+                   <audio ref={previewAudioRef} src={audioTakes[selectedTakeIdx]?.url} onEnded={() => setIsPreviewPlaying(false)} className="hidden" />
                 </div>
                 <div className="space-y-6 md:space-y-8 w-full text-left p-2">
                   <div className="space-y-2"><h2 className={`text-3xl md:text-4xl font-black tracking-tighter ${t.textHead}`}>Mixing Studio</h2><p className={`text-[13px] md:text-sm ${t.textBody}`}>Finalize your high-fidelity production for export.</p></div>
@@ -831,15 +851,20 @@ const App = () => {
                 {finalVideoUrl && <video controls autoPlay className="w-full h-full rounded-[2rem] md:rounded-[2.5rem]" src={finalVideoUrl} />}
               </div>
               <div className="flex flex-col gap-3 md:gap-4 max-w-sm mx-auto px-4">
-                 <button onClick={() => handleDownloadClick('video')} className={`px-10 py-5 md:px-12 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-lg md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${t.accent} active:scale-95`}><Download className="w-6 h-6 md:w-7 md:h-7" /> Download Video</button>
-                 <button onClick={() => handleDownloadClick('audio')} className="px-10 py-4 border-2 border-slate-700 rounded-xl md:rounded-2xl font-black uppercase text-[10px] text-slate-400 flex items-center justify-center gap-3 hover:text-white transition-all"><Music className="w-4 h-4 md:w-5 md:h-5" /> Audio Only</button>
-                 <button onClick={() => { setImage(null); setStep(0); setAudioUrl(null); setPrevAudioUrl(null); setFinalVideoUrl(null); setLocalVoiceCount(0); }} className="py-4 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:text-slate-300">Start New Project</button>
+                 <button onClick={() => handleDownloadClick('video')} className={`px-10 py-5 md:px-12 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-lg md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${t.accent} active:scale-95`}><Download className="w-6 h-6 md:w-7 md:h-7" /> Download Ad Video (.webm)</button>
+                 <button onClick={() => handleDownloadClick('audio')} className="px-10 py-4 border-2 border-slate-700 rounded-xl md:rounded-2xl font-black uppercase text-[10px] text-slate-400 flex items-center justify-center gap-3 hover:text-white transition-all"><Music className="w-4 h-4 md:w-5 md:h-5" /> Download Voiceover (.wav)</button>
+                 <button onClick={() => { setImage(null); setStep(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setLocalVoiceCount(0); }} className="py-4 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:text-slate-300">Start New Project</button>
               </div>
             </div>
           )}
         </div>
       </div>
       <div className="mt-8 md:mt-12 text-center pb-12"><p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.4em]">Powered by Gemini 2.0 Pro & VocalAd AI Engine</p></div>
+      {sessionToast && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-white/10 rounded-2xl px-6 py-3 shadow-2xl animate-in slide-in-from-bottom-4 pointer-events-none">
+          <p className="text-white text-xs font-black text-center whitespace-nowrap">{sessionToast}</p>
+        </div>
+      )}
       {showMagicWand && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/95 backdrop-blur-2xl">
           <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full space-y-6 shadow-2xl relative">
