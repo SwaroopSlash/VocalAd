@@ -828,27 +828,39 @@ const App = () => {
                   <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 items-end">
                     <div className="flex flex-col gap-2">
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Language</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedLanguage.id} onChange={e => handleConfigChange('lang', e.target.value)}>
-                          {LANGUAGES_LIST.map(l => <option key={l.id} value={l.id}>{l.label} {l.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
-                       </select>
+                       <div className="relative">
+                         <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedLanguage.id} onChange={e => handleConfigChange('lang', e.target.value)}>
+                           {LANGUAGES_LIST.map(l => <option key={l.id} value={l.id}>{l.label} {l.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
+                         </select>
+                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">AI Talent</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
-                          {VOICES.map(v => <option key={v.name} value={v.name}>{v.label} {v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
-                       </select>
+                       <div className="relative">
+                         <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
+                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.label} {v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
+                         </select>
+                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Performance</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedTone} onChange={e => handleConfigChange('tone', e.target.value)}>
-                          {TONES.map(ton => <option key={ton.id} value={ton.id}>{ton.id} {ton.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
-                       </select>
+                       <div className="relative">
+                         <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedTone} onChange={e => handleConfigChange('tone', e.target.value)}>
+                           {TONES.map(ton => <option key={ton.id} value={ton.id}>{ton.id} {ton.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
+                         </select>
+                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Pace</label>
-                       <select className={`w-full p-4 md:p-5 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedSpeed.label} onChange={e => setSelectedSpeed(SPEEDS.find(s => s.label === e.target.value))}>
-                          {SPEEDS.map(s => <option key={s.label} value={s.label}>{s.label}</option>)}
-                       </select>
+                       <div className="relative">
+                         <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedSpeed.label} onChange={e => setSelectedSpeed(SPEEDS.find(s => s.label === e.target.value))}>
+                           {SPEEDS.map(s => <option key={s.label} value={s.label}>{s.label}</option>)}
+                         </select>
+                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                       </div>
                     </div>
                   </div>
 
