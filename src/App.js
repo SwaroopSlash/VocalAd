@@ -43,10 +43,8 @@ import {
   X,
   Play,
   Pause,
-  Languages,
   Activity,
   LogOut,
-  Settings,
   Eye,
   EyeOff,
   Cpu
@@ -158,13 +156,13 @@ const App = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [authMessage, setAuthMessage] = useState('');
+  const [, setAuthMessage] = useState('');
 
   const [step, setStep] = useState(0); 
   const [image, setImage] = useState(null); 
   const [assetType, setAssetType] = useState('image'); 
-  const [videoVolume, setVideoVolume] = useState(0.5); 
-  const [videoMode, setVideoLoopMode] = useState('loop'); 
+
+  const [videoMode, ] = useState('loop');
   const [selectedRatio, setSelectedRatio] = useState(RATIOS[0]); 
   const [fitMode, setFitMode] = useState('contain'); 
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES_LIST[0]);
@@ -178,7 +176,7 @@ const App = () => {
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
-  const [audioProgress, setAudioProgress] = useState(0);
+  const [, setAudioProgress] = useState(0);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
@@ -246,10 +244,12 @@ const App = () => {
           setShowAuthModal(false);
           await setDoc(doc(db, 'artifacts', appId, 'users', u.uid), { email: u.email, lastLogin: new Date().toISOString(), uid: u.uid, displayName: u.displayName || "" }, { merge: true });
         }
+        // eslint-disable-next-line no-use-before-define
         if (pendingDownloadType && !u.isAnonymous) { triggerDownload(pendingDownloadType); setPendingDownloadType(null); }
       }
     });
     return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingDownloadType]);
 
   useEffect(() => {
