@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VocalAd — Payment Test</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f172a; color: #f1f5f9; font-family: system-ui, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 1.5rem; padding: 2rem; max-width: 480px; width: 100%; }
+    h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.25rem; }
+    .subtitle { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2rem; }
+    .step { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 1rem; border-radius: 0.75rem; margin-bottom: 0.5rem; background: #0f172a; border: 1px solid #1e293b; font-size: 0.8rem; }
+    .step .dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; flex-shrink: 0; margin-top: 4px; }
+    .step.ok .dot { background: #22c55e; }
+    .step.err .dot { background: #ef4444; }
+    .step.running .dot { background: #6366f1; animation: pulse 1s infinite; }
+    .step .label { color: #94a3b8; }
+    .step .value { color: #f1f5f9; word-break: break-all; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    button { width: 100%; padding: 1rem; background: #4f46e5; color: white; border: none; border-radius: 0.75rem; font-weight: 800; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; margin-top: 1.5rem; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button:hover:not(:disabled) { background: #4338ca; }
+    .warn { font-size: 0.7rem; color: #f59e0b; text-align: center; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Payment Flow Test</h1>
+  <p class="subtitle">VocalAd · Razorpay + Firebase</p>
+
+  <div class="step" id="s-sdk">
+    <div class="dot"></div>
+    <div><div class="label">Razorpay SDK</div><div class="value" id="s-sdk-val">Checking...</div></div>
+  </div>
+  <div class="step" id="s-key">
+    <div class="dot"></div>
+    <div><div class="label">Razorpay Key</div><div class="value" id="s-key-val">—</div></div>
+  </div>
+  <div class="step" id="s-auth">
+    <div class="dot"></div>
+    <div><div class="label">Firebase Auth</div><div class="value" id="s-auth-val">—</div></div>
+  </div>
+  <div class="step" id="s-order">
+    <div class="dot"></div>
+    <div><div class="label">createOrderV2 (Cloud Function)</div><div class="value" id="s-order-val">—</div></div>
+  </div>
+  <div class="step" id="s-modal">
+    <div class="dot"></div>
+    <div><div class="label">Razorpay Modal</div><div class="value" id="s-modal-val">—</div></div>
+  </div>
+
+  <button id="btn" onclick="runTest()">Run Test (₹1)</button>
+  <p class="warn">⚠ This charges ₹1 on the live gateway. Use only to verify the integration.</p>
+</div>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+  import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCU4-sfVJUrz8iBsMKlvDdnzXu_UjoLD5s",
+    authDomain: "advocalize.firebaseapp.com",
+    projectId: "advocalize",
+    storageBucket: "advocalize.firebasestorage.app",
+    messagingSenderId: "911571947699",
+    appId: "1:911571947699:web:e7f9b1a14f8c897441e0c6"
+  };
+  const RZP_KEY = "rzp_live_SfCZvOMFGefR8";
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  const functions = getFunctions(app, 'us-central1');
+
+  function setStep(id, state, text) {
+    const el = document.getElementById(id);
+    el.className = 'step ' + state;
+    document.getElementById(id + '-val').textContent = text;
+  }
+
+  // Step 1 — SDK check on load
+  window.addEventListener('load', () => {
+    if (window.Razorpay) {
+      setStep('s-sdk', 'ok', 'Loaded ✓');
+    } else {
+      setStep('s-sdk', 'err', 'FAILED — window.Razorpay is undefined');
+    }
+
+    if (RZP_KEY && RZP_KEY.startsWith('rzp_')) {
+      setStep('s-key', 'ok', RZP_KEY.slice(0, 16) + '… ✓');
+    } else {
+      setStep('s-key', 'err', 'Missing or invalid key');
+    }
+  });
+
+  window.runTest = async function() {
+    const btn = document.getElementById('btn');
+    btn.disabled = true;
+
+    // Step 2 — Auth
+    try {
+      setStep('s-auth', 'running', 'Signing in anonymously...');
+      await signInAnonymously(auth);
+      setStep('s-auth', 'ok', `UID: ${auth.currentUser.uid.slice(0,12)}… ✓`);
+    } catch (e) {
+      setStep('s-auth', 'err', 'Auth failed: ' + e.message);
+      btn.disabled = false;
+      return;
+    }
+
+    // Step 3 — Cloud Function
+    let orderId;
+    try {
+      setStep('s-order', 'running', 'Calling createOrderV2...');
+      const createOrder = httpsCallable(functions, 'createOrderV2');
+      const result = await createOrder({ amount: 1, planId: 'test_1rupee' });
+      orderId = result?.data?.orderId;
+      if (!orderId) throw new Error('No orderId in response');
+      setStep('s-order', 'ok', orderId + ' ✓');
+    } catch (e) {
+      setStep('s-order', 'err', 'FAILED: ' + e.message);
+      btn.disabled = false;
+      return;
+    }
+
+    // Step 4 — Modal
+    setStep('s-modal', 'running', 'Opening modal...');
+    const options = {
+      key: RZP_KEY,
+      amount: 100,
+      currency: 'INR',
+      name: 'VocalAd Test',
+      description: '₹1 integration test',
+      order_id: orderId,
+      handler: function(response) {
+        setStep('s-modal', 'ok', 'Payment captured! ID: ' + response.razorpay_payment_id);
+        btn.disabled = false;
+      },
+      modal: {
+        ondismiss: function() {
+          setStep('s-modal', 'ok', 'Modal opened and closed by user ✓');
+          btn.disabled = false;
+        }
+      }
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', function(r) {
+      setStep('s-modal', 'err', `payment.failed — ${r.error.description} (${r.error.code})`);
+      btn.disabled = false;
+    });
+    rzp.open();
+    setStep('s-modal', 'ok', 'Modal opened — waiting for user action');
+  };
+</script>
+</body>
+</html>
