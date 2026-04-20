@@ -47,7 +47,9 @@ import {
   LogOut,
   Eye,
   EyeOff,
-  Cpu
+  Cpu,
+  Headphones,
+  ChevronDown
 } from 'lucide-react';
 
 // --- PRODUCTION FIREBASE CONFIGURATION ---
@@ -198,6 +200,7 @@ const App = () => {
   const [sessionToast, setSessionToast] = useState(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewSampleUrl, setPreviewSampleUrl] = useState(null);
+  const [showVoiceTest, setShowVoiceTest] = useState(false);
   const previewCacheRef = useRef({});
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
@@ -246,6 +249,14 @@ const App = () => {
   const voiceApiKey = process.env.REACT_APP_GEMINI_VOICE_API_KEY || process.env.REACT_APP_GEMINI_API_KEY;
 
   useEffect(() => { setError(null); }, [step]);
+
+  useEffect(() => {
+    if (step !== 3 || assetType !== 'video' || !videoDuration || !previewDuration) return;
+    const ratio = previewDuration / videoDuration;
+    if (ratio < 0.5) setVideoMode('ai_director');
+    else if (ratio > 1.5) setVideoMode('loop');
+    else setVideoMode('freeze');
+  }, [step, videoDuration, previewDuration, assetType]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -821,15 +832,23 @@ const App = () => {
                   </div>
 
                   <div className="flex flex-col gap-2">
-                    <button onClick={previewVoice} disabled={isPreviewing} className="w-full py-3 rounded-2xl border-2 border-slate-700 hover:border-indigo-500/50 font-black text-xs uppercase tracking-widest text-slate-400 hover:text-indigo-400 flex items-center justify-center gap-2 transition-all disabled:opacity-50">
-                      {isPreviewing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                      {isPreviewing ? "Generating Sample..." : "Preview Voice Sample"}
+                    <button onClick={() => setShowVoiceTest(v => !v)} className={`w-full py-3 rounded-2xl border-2 font-black text-[10px] uppercase tracking-widest flex items-center justify-between px-4 transition-all ${showVoiceTest ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/5' : 'border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400'}`}>
+                      <span className="flex items-center gap-2"><Headphones className="w-3.5 h-3.5" />Not sure how this sounds? Test your settings</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showVoiceTest ? 'rotate-180' : ''}`} />
                     </button>
-                    {previewSampleUrl && !isPreviewing && (
-                      <div className="flex items-center gap-3 px-4 py-3 bg-slate-900/60 border border-white/5 rounded-2xl animate-in fade-in">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap">Sample</span>
-                        <audio controls autoPlay src={previewSampleUrl} className="flex-1 h-7 invert opacity-70" />
-                        <button onClick={() => setPreviewSampleUrl(null)} className="text-slate-600 hover:text-slate-400"><X className="w-3.5 h-3.5" /></button>
+                    {showVoiceTest && (
+                      <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
+                        <button onClick={previewVoice} disabled={isPreviewing} className="w-full py-2.5 rounded-xl border border-slate-700 hover:border-indigo-500/50 font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-indigo-400 flex items-center justify-center gap-2 transition-all disabled:opacity-50 bg-black/20">
+                          {isPreviewing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                          {isPreviewing ? "Generating..." : "Play Sample Phrase"}
+                        </button>
+                        {previewSampleUrl && !isPreviewing && (
+                          <div className="flex items-center gap-3 px-4 py-3 bg-slate-900/60 border border-white/5 rounded-2xl animate-in fade-in">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap">Sample</span>
+                            <audio controls autoPlay src={previewSampleUrl} className="flex-1 h-7 invert opacity-70" />
+                            <button onClick={() => setPreviewSampleUrl(null)} className="text-slate-600 hover:text-slate-400"><X className="w-3.5 h-3.5" /></button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -893,14 +912,26 @@ const App = () => {
                 <div className="space-y-6 md:space-y-8 w-full text-left p-2">
                   <div className="space-y-2"><h2 className={`text-3xl md:text-4xl font-black tracking-tighter ${t.textHead}`}>Mixing Studio</h2><p className={`text-[13px] md:text-sm ${t.textBody}`}>Finalize your high-fidelity production for export.</p></div>
                   <div className="bg-black/40 border border-white/5 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] space-y-6 shadow-inner">
-                    {assetType === 'video' && (
+                    {assetType === 'video' && (() => {
+                      const ratio = previewDuration && videoDuration ? previewDuration / videoDuration : null;
+                      const recommendedMode = ratio === null ? null : ratio < 0.5 ? 'ai_director' : ratio > 1.5 ? 'loop' : 'freeze';
+                      const modeDescriptions = {
+                        loop: "Video replays from start until your audio ends",
+                        freeze: "Video plays once then holds the last frame",
+                        ai_director: "AI paces video speed to match your audio · pick your start scene below"
+                      };
+                      return (
                       <div className="space-y-3">
                         <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody}`}>Video Mode</label>
                         <div className={`flex gap-1.5 bg-black/40 p-1.5 rounded-xl border border-white/5`}>
-                          <button onClick={() => setVideoMode('loop')} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${videoMode === 'loop' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Loop</button>
-                          <button onClick={() => setVideoMode('freeze')} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${videoMode === 'freeze' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Freeze</button>
-                          <button onClick={() => setVideoMode('ai_director')} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${videoMode === 'ai_director' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>AI Director ✦</button>
+                          {[{id:'loop',label:'Loop'},{id:'freeze',label:'Freeze'},{id:'ai_director',label:'AI Director ✦'}].map(m => (
+                            <button key={m.id} onClick={() => setVideoMode(m.id)} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all relative ${videoMode === m.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                              {m.label}
+                              {recommendedMode === m.id && videoMode !== m.id && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[7px] font-black uppercase tracking-wider text-emerald-400 whitespace-nowrap">Best fit</span>}
+                            </button>
+                          ))}
                         </div>
+                        <p className="text-[9px] text-slate-500 font-black px-1 animate-in fade-in">{modeDescriptions[videoMode]}</p>
                         {videoMode === 'ai_director' && videoDuration > 0 && (
                           <div className="space-y-2 px-1 pt-1 animate-in fade-in">
                             <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-slate-500">
@@ -912,7 +943,8 @@ const App = () => {
                           </div>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
                     <div className="space-y-4">
                       <button disabled={isCreatingVideo} onClick={createVideo} className={`w-full py-5 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isCreatingVideo ? 'bg-slate-700' : t.accent}`}>
                         {isCreatingVideo ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
