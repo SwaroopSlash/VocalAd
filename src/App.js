@@ -66,7 +66,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = 'advocalize-pro-v2';
+const appId = 'advocalize-pro-v2'; // VERSION 2.1 STABLE
 
 const BRAIN_MODEL = "gemini-2.0-flash-lite"; 
 const VOICE_MODEL = "gemini-2.0-flash-preview-tts"; 
@@ -145,7 +145,7 @@ const App = () => {
   const t = THEMES[currentTheme];
 
   const [user, setUser] = useState(null);
-  const [usage, setUsage] = useState({ creditsRemaining: 3, tier: 'free', videoCount: 0, voiceSamples: 0 });
+  const [usage, setUsage] = useState({ creditsRemaining: 0, tier: 'free', videoCount: 0, voiceSamples: 0 });
   const [localVoiceCount, setLocalVoiceCount] = useState(0);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -263,11 +263,19 @@ const App = () => {
           const remaining = Math.max(0, initial - (data.videoCount || 0));
           setUsage({ ...data, creditsRemaining: remaining });
           updateDoc(usageRef, { creditsRemaining: remaining });
-        } else setUsage(data);
+        } else {
+            // FIX: If we were waiting for payment, and credits just went up, show success!
+            if (isSubmittingPayment && data.creditsRemaining > usage.creditsRemaining) {
+                setPaymentSuccess(true);
+                setIsSubmittingPayment(false);
+                setTimeout(() => setShowUPIModal(false), 3000);
+            }
+            setUsage(data);
+        }
       } else setDoc(usageRef, { creditsRemaining: 3, tier: 'free', videoCount: 0, voiceSamples: 0 });
     }, (err) => console.error("Usage listener error:", err));
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isSubmittingPayment, usage.creditsRemaining]);
 
   const signInWithGoogle = async () => {
     setIsAuthLoading(true); setAuthError("");
@@ -304,27 +312,19 @@ const App = () => {
   };
 
   const handleInitiatePayment = async () => {
-    setIsSubmittingPayment(true);
-    setAuthError("");
-    
+    if (!window.Razorpay) { 
+        setAuthError("Razorpay SDK not loaded. Try refreshing or check internet."); 
+        return; 
+    }
+
+    setIsSubmittingPayment(true); setAuthError("");
     try {
-      console.log("PAYMENT_STEP_1: Initializing Functions");
       const { getFunctions, httpsCallable } = await import('firebase/functions');
       const functions = getFunctions(app, 'us-central1');
       const createOrder = httpsCallable(functions, 'createOrderV2');
-
-      console.log("PAYMENT_STEP_2: Requesting Order ID from Server");
       const result = await createOrder({ amount: selectedPlan.price, planId: selectedPlan.id });
-      const orderId = result?.data?.orderId;
-
-      if (!orderId) {
-        throw new Error("Server failed to return an Order ID.");
-      }
-
-      console.log("PAYMENT_STEP_3: Opening Razorpay SDK");
-      if (!window.Razorpay) {
-        throw new Error("Razorpay SDK is missing from the page. Please check your internet connection.");
-      }
+      
+      if (!result?.data?.orderId) throw new Error("Server failed to generate Order ID.");
 
       const options = {
         key: process.env.REACT_APP_RAZORPAY_KEY_ID || "rzp_live_SfCZvOMFGefR8r",
@@ -332,28 +332,24 @@ const App = () => {
         currency: "INR",
         name: "VocalAd AI",
         description: `Credits for ${selectedPlan.label}`,
-        order_id: orderId,
-        handler: function (response) {
-          console.log("PAYMENT_SUCCESS:", response.razorpay_payment_id);
-          setPaymentSuccess(true);
-          setShowUPIModal(false);
+        order_id: result.data.orderId,
+        handler: function(response) {
+          // Instead of immediate close, we wait for the Webhook to update Firestore
+          console.log("Payment captured locally. Waiting for cloud sync...");
         },
         prefill: { email: user?.email || "" },
         theme: { color: "#4f46e5" },
         modal: {
-          ondismiss: function() {
-            setIsSubmittingPayment(false);
-          }
+            ondismiss: function() {
+                setIsSubmittingPayment(false);
+            }
         }
       };
 
       const rzp = new window.Razorpay(options);
       rzp.open();
-
-    } catch (err) {
-      console.error("PAYMENT_CRITICAL_FAILURE:", err);
-      setAuthError(`Technical Error: ${err.message || "Connection lost"}`);
-    } finally {
+    } catch (err) { 
+      setAuthError(`Technical Error: ${err.message}`); 
       setIsSubmittingPayment(false);
     }
   };
@@ -510,10 +506,22 @@ const App = () => {
       {showUPIModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-lg">
           <div className={`${t.dropdown} border border-white/10 rounded-[2.5rem] p-6 md:p-10 max-w-lg w-full shadow-2xl relative`}>
+            {isSubmittingPayment && !paymentSuccess && (
+                <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md z-[150] flex flex-col items-center justify-center gap-6 rounded-[2.5rem]">
+                    <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-xl font-black text-white">Verifying Transaction</h3>
+                        <p className="text-slate-400 text-xs px-12">Confirm payment in your UPI app. We're waiting for the bank's signal.</p>
+                    </div>
+                </div>
+            )}
             {paymentSuccess && (
-              <div className="sticky top-0 left-0 right-0 bottom-0 bg-slate-900/95 backdrop-blur-md z-[120] flex flex-col items-center justify-center gap-6 rounded-[2rem]">
+              <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-md z-[160] flex flex-col items-center justify-center gap-6 rounded-[2.5rem] animate-in fade-in zoom-in-95">
                 <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center border-2 border-green-500/20 shadow-[0_0_50px_rgba(34,197,94,0.1)]"><CheckCircle className="w-12 h-12" /></div>
-                <div className="text-center px-8"><h3 className="text-3xl font-black text-white tracking-tight">Success</h3><p className="text-slate-400 text-sm">Credits added shortly.</p><button onClick={() => {setPaymentSuccess(false); setShowUPIModal(false);}} className="mt-4 px-6 py-2 bg-white/10 text-white rounded-xl text-xs font-bold uppercase tracking-widest">Close</button></div>
+                <div className="text-center px-8">
+                    <h3 className="text-3xl font-black text-white tracking-tight">Payment Verified</h3>
+                    <p className="text-slate-400 text-sm">Credits added! Your studio is now unlocked.</p>
+                </div>
               </div>
             )}
             <button onClick={() => setShowUPIModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-[130] bg-black/20 p-2 rounded-full"><X className="w-5 h-5" /></button>
@@ -783,7 +791,7 @@ const App = () => {
                 setIsGeneratingScript(true); try {
                   const prompt = `Ad copywriter. Describe: "${magicPrompt}". Language: ${selectedLanguage.label}. Write 15s commercial script. Max 40 words. Plain text only.`;
                   const res = await callGemini(prompt, BRAIN_MODEL);
-                  setText(res.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, '') || ""); setShowMagicWand(false);
+                  setText(res.candidates?.[0]?.content?.[0]?.parts?.[0]?.text?.replace(/```/g, '') || ""); setShowMagicWand(false);
                 } catch (e) { setError(e.message); } finally { setIsGeneratingScript(false); }
             }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3">
               {isGeneratingScript ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
