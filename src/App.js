@@ -67,6 +67,7 @@ const db = getFirestore(app);
 const appId = 'advocalize-pro-v2'; // VERSION 2.1 STABLE
 
 const BRAIN_MODEL = "gemini-2.5-flash";
+const BRAIN_MODEL_FALLBACK = "gemini-2.0-flash";
 const VOICE_MODEL = "gemini-2.5-flash-preview-tts";
 const VOICE_MODEL_FALLBACK = "gemini-3.1-flash-tts-preview";
 
@@ -396,9 +397,9 @@ const App = () => {
       return await response.json();
     };
     const result = await tryModel(model);
-    if (result.error && isAudio && model === VOICE_MODEL) {
-      const fallback = await tryModel(VOICE_MODEL_FALLBACK);
-      return fallback;
+    if (result.error) {
+      if (isAudio && model === VOICE_MODEL) return tryModel(VOICE_MODEL_FALLBACK);
+      if (!isAudio && model === BRAIN_MODEL) return tryModel(BRAIN_MODEL_FALLBACK);
     }
     return result;
   };
