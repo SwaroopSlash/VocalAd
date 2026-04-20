@@ -117,6 +117,17 @@ const TONES = [
   { id: 'Trustworthy & Warm', premium: true },
 ];
 
+const VOICE_PREVIEW_PHRASES = {
+  'en-IN': "Welcome to VocalAd. Your voice, your brand.",
+  'hi-IN': "नमस्ते, VocalAd में आपका स्वागत है।",
+  'mr-IN': "नमस्कार, VocalAd मध्ये आपले स्वागत आहे।",
+  'bn-IN': "নমস্কার, VocalAd-এ আপনাকে স্বাগতম।",
+  'ta-IN': "வணக்கம், VocalAd உங்களை வரவேற்கிறது.",
+  'te-IN': "నమస్కారం, VocalAd లో మీకు స్వాగతం.",
+  'kn-IN': "ನಮಸ್ಕಾರ, VocalAd ಗೆ ಸ್ವಾಗತ.",
+  'gu-IN': "નમસ્તે, VocalAd માં આપનું સ્વાગત છે.",
+};
+
 const SPEEDS = [
   { label: 'Normal', instruction: 'at a normal, natural pace' },
   { label: 'Slow', instruction: 'at a slow, deliberate pace' },
@@ -165,9 +176,11 @@ const App = () => {
   const [image, setImage] = useState(null); 
   const [assetType, setAssetType] = useState('image'); 
 
-  const [videoMode, ] = useState('loop');
-  const [selectedRatio, setSelectedRatio] = useState(RATIOS[0]); 
-  const [fitMode, setFitMode] = useState('contain'); 
+  const [videoMode, setVideoMode] = useState('loop');
+  const [videoStartOffset, setVideoStartOffset] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [selectedRatio, setSelectedRatio] = useState(RATIOS[0]);
+  const [fitMode, setFitMode] = useState('contain');
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES_LIST[0]);
   const [selectedTone, setSelectedTone] = useState(TONES[0].id);
   const [text, setText] = useState("");
@@ -183,6 +196,9 @@ const App = () => {
   const [audioTakes, setAudioTakes] = useState([]); // [{url, blob}], index 0 = most recent
   const [selectedTakeIdx, setSelectedTakeIdx] = useState(0);
   const [sessionToast, setSessionToast] = useState(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [previewSampleUrl, setPreviewSampleUrl] = useState(null);
+  const previewCacheRef = useRef({});
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -457,6 +473,32 @@ const App = () => {
     } catch (err) { setError(err.message); setIsGeneratingAudio(false); }
   };
 
+  const previewVoice = async () => {
+    const cacheKey = `${selectedVoice}|${selectedTone}|${selectedLanguage.id}`;
+    if (previewCacheRef.current[cacheKey]) {
+      setPreviewSampleUrl(previewCacheRef.current[cacheKey]);
+      return;
+    }
+    setIsPreviewing(true);
+    setPreviewSampleUrl(null);
+    try {
+      const phrase = VOICE_PREVIEW_PHRASES[selectedLanguage.id] || VOICE_PREVIEW_PHRASES['en-IN'];
+      const ttsPrompt = `Deliver in a ${selectedTone} tone, at a normal, natural pace:\n${phrase}`;
+      const res = await callGemini(ttsPrompt, VOICE_MODEL, true);
+      if (res.error) throw new Error(res.message);
+      const inlineData = res.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+      if (!inlineData) throw new Error("Preview failed.");
+      const sampleRate = parseInt(inlineData.mimeType.match(/sampleRate=(\d+)/)?.[1] || "24000");
+      const binaryString = atob(inlineData.data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+      const url = URL.createObjectURL(pcmToWav(bytes.buffer, sampleRate));
+      previewCacheRef.current[cacheKey] = url;
+      setPreviewSampleUrl(url);
+    } catch (err) { setError(err.message); }
+    finally { setIsPreviewing(false); }
+  };
+
   const createVideo = async () => {
     if (!image || !audioTakes.length || !user) return;
     const audioBlob = audioTakes[selectedTakeIdx]?.blob;
@@ -474,9 +516,35 @@ const App = () => {
       if (assetType === 'video') {
         assetElement = document.createElement('video'); assetElement.src = image; assetElement.muted = true; assetElement.crossOrigin = "anonymous";
         await new Promise(r => { assetElement.onloadeddata = r; assetElement.load(); });
+        const vDur = assetElement.duration;
+        const startOffset = videoMode === 'ai_director' ? Math.min(videoStartOffset, vDur - 0.5) : 0;
+        if (videoMode === 'ai_director') {
+          const availableClip = vDur - startOffset;
+          assetElement.playbackRate = Math.min(Math.max(availableClip / duration, 0.5), 2.0);
+          assetElement.loop = true;
+        } else if (videoMode === 'loop') {
+          assetElement.playbackRate = 1; assetElement.loop = true;
+        } else {
+          assetElement.playbackRate = 1; assetElement.loop = false;
+          assetElement.onended = () => assetElement.pause();
+        }
+        assetElement.currentTime = startOffset;
+        await new Promise(r => { let done = false; const resolve = () => { if (!done) { done = true; r(); } }; assetElement.addEventListener('seeked', resolve, { once: true }); setTimeout(resolve, 1000); });
       } else {
         assetElement = new Image(); assetElement.src = image; assetElement.crossOrigin = "anonymous";
         await new Promise(r => assetElement.onload = r);
+      }
+      const assetWidth = assetType === 'video' ? assetElement.videoWidth : assetElement.width;
+      const assetHeight = assetType === 'video' ? assetElement.videoHeight : assetElement.height;
+      const assetRatio = assetWidth / assetHeight;
+      const canvasRatio = canvas.width / canvas.height;
+      let dw, dh, ox = 0, oy = 0;
+      if (fitMode === 'cover') {
+        if (assetRatio > canvasRatio) { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
+        else { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
+      } else {
+        if (assetRatio > canvasRatio) { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
+        else { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
       }
       const stream = canvas.captureStream(30);
       const audioStream = audioContext.createMediaStreamDestination();
@@ -488,36 +556,23 @@ const App = () => {
         await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'usage', 'stats'), { creditsRemaining: increment(-1) });
         setIsCreatingVideo(false); setStep(4);
       };
-      mediaRecorder.start(); voiceSource.start();
-      const totalFrames = Math.ceil(duration * 30);
-      let currentFrame = 0;
-      const renderFrame = async () => {
-        if (currentFrame >= totalFrames) { mediaRecorder.stop(); voiceSource.stop(); return; }
-        const currentTime = currentFrame / 30;
-        setMasteringProgress(Math.round((currentFrame / totalFrames) * 100));
+      const fadeStart = duration - 0.8;
+      let startTime = null; let animFrameId; let isRecording = true;
+      const renderFrame = (timestamp) => {
+        if (!isRecording) return;
+        if (!startTime) startTime = timestamp;
+        const elapsed = (timestamp - startTime) / 1000;
+        setMasteringProgress(Math.min(Math.round((elapsed / duration) * 100), 99));
         ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        const assetWidth = assetType === 'video' ? assetElement.videoWidth : assetElement.width;
-        const assetHeight = assetType === 'video' ? assetElement.videoHeight : assetElement.height;
-        const assetRatio = assetWidth / assetHeight;
-        const canvasRatio = canvas.width / canvas.height;
-        if (assetType === 'video') {
-            const vDur = assetElement.duration;
-            assetElement.currentTime = videoMode === 'loop' ? currentTime % vDur : Math.min(currentTime, vDur - 0.1);
-            await new Promise(r => { const os = () => { assetElement.removeEventListener('seeked', os); r(); }; assetElement.addEventListener('seeked', os); });
-        }
-        let dw, dh, ox = 0, oy = 0;
-        if (fitMode === 'cover') {
-          if (assetRatio > canvasRatio) { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
-          else { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
-        } else {
-          if (assetRatio > canvasRatio) { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
-          else { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
-          ctx.save(); ctx.filter = 'blur(60px) brightness(0.4)'; ctx.drawImage(assetElement, -canvas.width, -canvas.height, canvas.width*3, canvas.height*3); ctx.restore();
-        }
+        if (fitMode !== 'cover') { ctx.save(); ctx.filter = 'blur(60px) brightness(0.4)'; ctx.drawImage(assetElement, -canvas.width, -canvas.height, canvas.width * 3, canvas.height * 3); ctx.restore(); }
         ctx.drawImage(assetElement, ox, oy, dw, dh);
-        currentFrame++; requestAnimationFrame(renderFrame);
+        if (elapsed >= fadeStart) { const a = Math.min((elapsed - fadeStart) / 0.8, 1); ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+        animFrameId = requestAnimationFrame(renderFrame);
       };
+      mediaRecorder.start(); voiceSource.start();
+      if (assetType === 'video') assetElement.play();
       requestAnimationFrame(renderFrame);
+      setTimeout(() => { isRecording = false; cancelAnimationFrame(animFrameId); mediaRecorder.stop(); voiceSource.stop(); if (assetType === 'video') assetElement.pause(); }, (duration + 0.15) * 1000);
     } catch (err) { setError("Mastering failed."); setIsCreatingVideo(false); }
   };
 
@@ -765,6 +820,20 @@ const App = () => {
                     </div>
                   </div>
 
+                  <div className="flex flex-col gap-2">
+                    <button onClick={previewVoice} disabled={isPreviewing} className="w-full py-3 rounded-2xl border-2 border-slate-700 hover:border-indigo-500/50 font-black text-xs uppercase tracking-widest text-slate-400 hover:text-indigo-400 flex items-center justify-center gap-2 transition-all disabled:opacity-50">
+                      {isPreviewing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                      {isPreviewing ? "Generating Sample..." : "Preview Voice Sample"}
+                    </button>
+                    {previewSampleUrl && !isPreviewing && (
+                      <div className="flex items-center gap-3 px-4 py-3 bg-slate-900/60 border border-white/5 rounded-2xl animate-in fade-in">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap">Sample</span>
+                        <audio controls autoPlay src={previewSampleUrl} className="flex-1 h-7 invert opacity-70" />
+                        <button onClick={() => setPreviewSampleUrl(null)} className="text-slate-600 hover:text-slate-400"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    )}
+                  </div>
+
                   <button disabled={!text.trim() || isGeneratingAudio || localVoiceCount >= 5} onClick={generateAudio} className={`w-full py-5 md:py-6 text-white rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : localVoiceCount >= 5 ? 'bg-slate-700 cursor-not-allowed' : t.accent}`}>
                     {isGeneratingAudio ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Volume2 className="w-7 h-7" />}
                     {isGeneratingAudio ? "Producing Talent..." : localVoiceCount >= 5 ? "Session Limit Reached — Start New Project" : audioTakes.length > 0 ? `Generate Take ${audioTakes.length + 1}` : "Generate AI Voiceover"}
@@ -808,7 +877,7 @@ const App = () => {
             <div className="py-4 md:py-6 space-y-10 animate-in fade-in max-w-5xl mx-auto">
               <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
                 <div className="relative group mx-auto bg-black rounded-[2.5rem] md:rounded-[3.5rem] overflow-hidden shadow-2xl border-[8px] md:border-[12px] border-slate-800 w-[240px] md:w-[280px]" style={{ aspectRatio: selectedRatio.ratio }}>
-                   {assetType === 'image' ? <img src={image} className="w-full h-full object-cover" alt="Mix" /> : <video ref={previewVideoRef} src={image} muted className="w-full h-full object-cover" />}
+                   {assetType === 'image' ? <img src={image} className="w-full h-full object-cover" alt="Mix" /> : <video ref={previewVideoRef} src={image} muted className="w-full h-full object-cover" onLoadedMetadata={(e) => setVideoDuration(e.target.duration)} />}
                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-6 md:p-8 opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex items-center justify-between gap-4">
                          <button onClick={() => setIsPreviewPlaying(!isPreviewPlaying)} className="w-12 h-12 md:w-14 md:h-14 bg-indigo-600 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all">{isPreviewPlaying ? <Pause className="w-5 h-5 md:w-6 md:h-6 fill-white" /> : <Play className="w-5 h-5 md:w-6 md:h-6 fill-white ml-0.5 md:ml-1" />}</button>
@@ -824,6 +893,26 @@ const App = () => {
                 <div className="space-y-6 md:space-y-8 w-full text-left p-2">
                   <div className="space-y-2"><h2 className={`text-3xl md:text-4xl font-black tracking-tighter ${t.textHead}`}>Mixing Studio</h2><p className={`text-[13px] md:text-sm ${t.textBody}`}>Finalize your high-fidelity production for export.</p></div>
                   <div className="bg-black/40 border border-white/5 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] space-y-6 shadow-inner">
+                    {assetType === 'video' && (
+                      <div className="space-y-3">
+                        <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody}`}>Video Mode</label>
+                        <div className={`flex gap-1.5 bg-black/40 p-1.5 rounded-xl border border-white/5`}>
+                          <button onClick={() => setVideoMode('loop')} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${videoMode === 'loop' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Loop</button>
+                          <button onClick={() => setVideoMode('freeze')} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${videoMode === 'freeze' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Freeze</button>
+                          <button onClick={() => setVideoMode('ai_director')} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${videoMode === 'ai_director' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>AI Director ✦</button>
+                        </div>
+                        {videoMode === 'ai_director' && videoDuration > 0 && (
+                          <div className="space-y-2 px-1 pt-1 animate-in fade-in">
+                            <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-slate-500">
+                              <span>Scene Start</span>
+                              <span>{videoStartOffset.toFixed(1)}s</span>
+                            </div>
+                            <input type="range" min="0" max={Math.max(0, videoDuration - 1)} step="0.5" value={videoStartOffset} onChange={(e) => setVideoStartOffset(parseFloat(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
+                            <p className="text-[8px] text-slate-600 font-black uppercase tracking-widest">AI will auto-pace video speed · fades to black at end</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="space-y-4">
                       <button disabled={isCreatingVideo} onClick={createVideo} className={`w-full py-5 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isCreatingVideo ? 'bg-slate-700' : t.accent}`}>
                         {isCreatingVideo ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
