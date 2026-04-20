@@ -304,23 +304,26 @@ const App = () => {
   };
 
   const handleInitiatePayment = async () => {
-    // DIAGNOSTIC 1: Check SDK Availability
-    if (!window.Razorpay) { 
-        setAuthError("Razorpay SDK was not found in window. Please disable ad-blockers and refresh."); 
-        return; 
-    }
-
-    setIsSubmittingPayment(true); setAuthError("");
+    setIsSubmittingPayment(true);
+    setAuthError("");
+    
     try {
-      // DIAGNOSTIC 2: Check Firebase Callable
+      console.log("PAYMENT_STEP_1: Initializing Functions");
       const { getFunctions, httpsCallable } = await import('firebase/functions');
       const functions = getFunctions(app, 'us-central1');
       const createOrder = httpsCallable(functions, 'createOrderV2');
-      
-      const orderData = await createOrder({ amount: selectedPlan.price, planId: selectedPlan.id });
 
-      if (!orderData?.data?.orderId) {
-          throw new Error(`Server returned no Order ID. Raw response: ${JSON.stringify(orderData)}`);
+      console.log("PAYMENT_STEP_2: Requesting Order ID from Server");
+      const result = await createOrder({ amount: selectedPlan.price, planId: selectedPlan.id });
+      const orderId = result?.data?.orderId;
+
+      if (!orderId) {
+        throw new Error("Server failed to return an Order ID.");
+      }
+
+      console.log("PAYMENT_STEP_3: Opening Razorpay SDK");
+      if (!window.Razorpay) {
+        throw new Error("Razorpay SDK is missing from the page. Please check your internet connection.");
       }
 
       const options = {
@@ -329,23 +332,30 @@ const App = () => {
         currency: "INR",
         name: "VocalAd AI",
         description: `Credits for ${selectedPlan.label}`,
-        order_id: orderData.data.orderId,
-        handler: function(response) {
+        order_id: orderId,
+        handler: function (response) {
+          console.log("PAYMENT_SUCCESS:", response.razorpay_payment_id);
           setPaymentSuccess(true);
           setShowUPIModal(false);
         },
         prefill: { email: user?.email || "" },
         theme: { color: "#4f46e5" },
+        modal: {
+          ondismiss: function() {
+            setIsSubmittingPayment(false);
+          }
+        }
       };
 
-      const rzp1 = new window.Razorpay(options);
-      rzp1.open();
-    } catch (err) { 
-      console.error("Critical Payment Failure:", err);
-      // SHOW FULL TECHNICAL ERROR TO THE USER
-      setAuthError(`Checkout Failed: ${err.message || "Unknown Failure"}`); 
-    } 
-    finally { setIsSubmittingPayment(false); }
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+
+    } catch (err) {
+      console.error("PAYMENT_CRITICAL_FAILURE:", err);
+      setAuthError(`Technical Error: ${err.message || "Connection lost"}`);
+    } finally {
+      setIsSubmittingPayment(false);
+    }
   };
 
   const pcmToWav = (pcmBuffer, sampleRate) => {
