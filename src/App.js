@@ -314,44 +314,60 @@ const App = () => {
   };
 
   const handleInitiatePayment = async () => {
-    if (!window.Razorpay) { 
-        setAuthError("Razorpay SDK not loaded. Try refreshing or check internet."); 
-        return; 
+    if (!window.Razorpay) {
+        setAuthError("Razorpay SDK not loaded. Try refreshing or check internet.");
+        return;
+    }
+
+    const rzpKey = process.env.REACT_APP_RAZORPAY_KEY_ID;
+    if (!rzpKey) {
+      setAuthError("Payment config missing. Please contact support.");
+      console.error("[Payment] REACT_APP_RAZORPAY_KEY_ID is undefined in this build.");
+      return;
     }
 
     setIsSubmittingPayment(true); setAuthError("");
     try {
+      console.log("[Payment] Step 1: Calling createOrderV2...");
       const { getFunctions, httpsCallable } = await import('firebase/functions');
       const functions = getFunctions(app, 'us-central1');
       const createOrder = httpsCallable(functions, 'createOrderV2');
       const result = await createOrder({ amount: selectedPlan.price, planId: selectedPlan.id });
-      
+
       if (!result?.data?.orderId) throw new Error("Server failed to generate Order ID.");
+      console.log("[Payment] Step 2: Order created:", result.data.orderId);
 
       const options = {
-        key: process.env.REACT_APP_RAZORPAY_KEY_ID,
+        key: rzpKey,
         amount: selectedPlan.price * 100,
         currency: "INR",
         name: "VocalAd AI",
         description: `Credits for ${selectedPlan.label}`,
         order_id: result.data.orderId,
         handler: function(response) {
-          // Instead of immediate close, we wait for the Webhook to update Firestore
-          console.log("Payment captured locally. Waiting for cloud sync...");
+          console.log("[Payment] Step 3: Captured, waiting for webhook sync...", response.razorpay_payment_id);
         },
         prefill: { email: user?.email || "" },
         theme: { color: "#4f46e5" },
         modal: {
             ondismiss: function() {
+                console.log("[Payment] Modal dismissed by user.");
                 setIsSubmittingPayment(false);
             }
         }
       };
 
+      console.log("[Payment] Step 3: Opening Razorpay modal, key prefix:", rzpKey.slice(0, 12));
       const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function(response) {
+        console.error("[Payment] Razorpay payment.failed:", response.error);
+        setAuthError(`Payment failed: ${response.error.description} (code: ${response.error.code})`);
+        setIsSubmittingPayment(false);
+      });
       rzp.open();
-    } catch (err) { 
-      setAuthError(`Technical Error: ${err.message}`); 
+    } catch (err) {
+      console.error("[Payment] Caught error:", err);
+      setAuthError(`Technical Error: ${err.message}`);
       setIsSubmittingPayment(false);
     }
   };
