@@ -489,24 +489,8 @@ const App = () => {
       setPreviewSampleUrl(previewCacheRef.current[cacheKey]);
       return;
     }
-    setIsPreviewing(true);
-    setPreviewSampleUrl(null);
-    try {
-      const phrase = VOICE_PREVIEW_PHRASES[selectedLanguage.id] || VOICE_PREVIEW_PHRASES['en-IN'];
-      const ttsPrompt = `Deliver in a ${selectedTone} tone, at a normal, natural pace:\n${phrase}`;
-      const res = await callGemini(ttsPrompt, VOICE_MODEL, true);
-      if (res.error) throw new Error(res.message);
-      const inlineData = res.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-      if (!inlineData) throw new Error("Preview failed.");
-      const sampleRate = parseInt(inlineData.mimeType.match(/sampleRate=(\d+)/)?.[1] || "24000");
-      const binaryString = atob(inlineData.data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-      const url = URL.createObjectURL(pcmToWav(bytes.buffer, sampleRate));
-      previewCacheRef.current[cacheKey] = url;
-      setPreviewSampleUrl(url);
-    } catch (err) { setError(err.message); }
-    finally { setIsPreviewing(false); }
+    // Voice sample preview deferred — static samples to be added later
+    setIsPreviewing(false);
   };
 
   const createVideo = async () => {
