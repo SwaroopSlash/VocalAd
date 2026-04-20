@@ -66,8 +66,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'advocalize-pro-v2'; // VERSION 2.1 STABLE
 
-const BRAIN_MODEL = "gemini-2.0-flash-lite"; 
-const VOICE_MODEL = "gemini-2.0-flash-preview-tts"; 
+const BRAIN_MODEL = "gemini-2.5-flash";
+const VOICE_MODEL = "gemini-2.5-flash-preview-tts";
+const VOICE_MODEL_FALLBACK = "gemini-3.1-flash-tts-preview";
 
 const PLANS = [
   { id: 'single', label: 'Quick Top-up', credits: 1, price: 10, color: 'emerald' },
@@ -387,11 +388,19 @@ const App = () => {
 
   const callGemini = async (prompt, model, isAudio = false) => {
     const activeKey = isAudio ? voiceApiKey : brainApiKey;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
     const payload = { contents: [{ parts: [{ text: prompt }] }], ...(isAudio && { generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } } } }) };
-    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!response.ok) { const err = await response.json(); return { error: true, message: err.error?.message }; }
-    return await response.json();
+    const tryModel = async (m) => {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${activeKey}`;
+      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!response.ok) { const err = await response.json(); return { error: true, message: err.error?.message, status: response.status }; }
+      return await response.json();
+    };
+    const result = await tryModel(model);
+    if (result.error && isAudio && model === VOICE_MODEL) {
+      const fallback = await tryModel(VOICE_MODEL_FALLBACK);
+      return fallback;
+    }
+    return result;
   };
 
   const handleConfigChange = (type, val) => {
@@ -845,6 +854,7 @@ const App = () => {
                 try {
                   const prompt = `Ad copywriter. Describe: "${magicPrompt}". Language: ${selectedLanguage.label}. Write 15s commercial script. Max 40 words. Plain text only.`;
                   const res = await callGemini(prompt, BRAIN_MODEL);
+                  if (res.error) throw new Error(res.message || "Gemini API error. Check your API key.");
                   const generated = res.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, '').trim();
                   if (!generated) throw new Error("AI returned empty script. Try a more descriptive prompt.");
                   setText(generated); setShowMagicWand(false);
