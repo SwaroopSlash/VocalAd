@@ -534,7 +534,7 @@ const App = () => {
     if (!image || !audioTakes.length || !user) return;
     const audioBlob = audioTakes[selectedTakeIdx]?.blob;
     if (!audioBlob) return;
-    if (usage.creditsRemaining <= 0) { setModalReason("out_of_credits"); setShowAuthModal(true); return; }
+    if (usage.creditsRemaining <= 0) { if (user && !user.isAnonymous) { setShowUPIModal(true); } else { setModalReason("out_of_credits"); setShowAuthModal(true); } return; }
     setIsCreatingVideo(true); setMasteringProgress(0);
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -552,7 +552,8 @@ const App = () => {
         if (videoMode === 'ai_director') {
           const availableClip = vDur - startOffset;
           assetElement.playbackRate = Math.min(Math.max(availableClip / duration, 0.5), 2.0);
-          assetElement.loop = true;
+          assetElement.loop = false;
+          assetElement.onended = () => { assetElement.currentTime = startOffset; assetElement.play(); };
         } else if (videoMode === 'loop') {
           assetElement.playbackRate = 1; assetElement.loop = true;
         } else {
@@ -851,28 +852,6 @@ const App = () => {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <button onClick={() => setShowVoiceTest(v => !v)} className={`w-full py-3 rounded-2xl border-2 font-black text-[10px] uppercase tracking-widest flex items-center justify-between px-4 transition-all ${showVoiceTest ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/5' : 'border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400'}`}>
-                      <span className="flex items-center gap-2"><Headphones className="w-3.5 h-3.5" />Not sure how this sounds? Test your settings</span>
-                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showVoiceTest ? 'rotate-180' : ''}`} />
-                    </button>
-                    {showVoiceTest && (
-                      <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
-                        {previewSampleUrl ? (
-                          <div className="flex items-center gap-3 px-4 py-3 bg-slate-900/60 border border-white/5 rounded-2xl animate-in fade-in">
-                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap">Sample</span>
-                            <audio controls autoPlay src={previewSampleUrl} controlsList="nodownload noplaybackrate" className="flex-1 h-7 invert opacity-70" />
-                            <button onClick={() => setPreviewSampleUrl(null)} className="text-slate-600 hover:text-slate-400"><X className="w-3.5 h-3.5" /></button>
-                          </div>
-                        ) : (
-                          <button onClick={previewVoice} disabled={isPreviewing} className="w-full py-2.5 rounded-xl border border-slate-700 hover:border-indigo-500/50 font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-indigo-400 flex items-center justify-center gap-2 transition-all disabled:opacity-50 bg-black/20">
-                            {isPreviewing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                            {isPreviewing ? "Generating..." : "Play Sample Phrase"}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
 
                   <button disabled={!text.trim() || isGeneratingAudio || localVoiceCount >= 5} onClick={generateAudio} className={`w-full py-5 md:py-6 text-white rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : localVoiceCount >= 5 ? 'bg-slate-700 cursor-not-allowed' : t.accent}`}>
                     {isGeneratingAudio ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Volume2 className="w-7 h-7" />}
