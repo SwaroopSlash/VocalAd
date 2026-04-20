@@ -149,6 +149,7 @@ const App = () => {
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const dropdownRef = useRef(null);
+  const paymentTimeoutRef = useRef(null);
   
   const [modalReason, setModalReason] = useState("limit");
   const [authMode, setAuthMode] = useState('signup'); 
@@ -156,7 +157,7 @@ const App = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [, setAuthMessage] = useState('');
+  const [authMessage, setAuthMessage] = useState('');
 
   const [step, setStep] = useState(0); 
   const [image, setImage] = useState(null); 
@@ -176,9 +177,10 @@ const App = () => {
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
-  const [, setAudioProgress] = useState(0);
+  const [audioProgress, setAudioProgress] = useState(0);
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
+  const [prevAudioUrl, setPrevAudioUrl] = useState(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -262,7 +264,7 @@ const App = () => {
         // ARCHITECT'S SYNC LOGIC:
         // If we were waiting for a payment, and credits just increased, trigger success!
         if (isSubmittingPayment && (data.creditsRemaining > (usage.creditsRemaining || 0))) {
-            console.log("SYNC_SUCCESS: Credits detected in Firestore.");
+            if (paymentTimeoutRef.current) clearTimeout(paymentTimeoutRef.current);
             setPaymentSuccess(true);
             setIsSubmittingPayment(false);
             // Close modal after showing success for 4 seconds
@@ -328,14 +330,12 @@ const App = () => {
 
     setIsSubmittingPayment(true); setAuthError("");
     try {
-      console.log("[Payment] Step 1: Calling createOrderV2...");
       const { getFunctions, httpsCallable } = await import('firebase/functions');
       const functions = getFunctions(app, 'us-central1');
       const createOrder = httpsCallable(functions, 'createOrderV2');
       const result = await createOrder({ amount: selectedPlan.price, planId: selectedPlan.id });
 
       if (!result?.data?.orderId) throw new Error("Server failed to generate Order ID.");
-      console.log("[Payment] Step 2: Order created:", result.data.orderId);
 
       const options = {
         key: rzpKey,
@@ -344,29 +344,32 @@ const App = () => {
         name: "VocalAd AI",
         description: `Credits for ${selectedPlan.label}`,
         order_id: result.data.orderId,
-        handler: function(response) {
-          console.log("[Payment] Step 3: Captured, waiting for webhook sync...", response.razorpay_payment_id);
+        handler: function() {
+          if (paymentTimeoutRef.current) clearTimeout(paymentTimeoutRef.current);
         },
         prefill: { email: user?.email || "" },
         theme: { color: "#4f46e5" },
         modal: {
             ondismiss: function() {
-                console.log("[Payment] Modal dismissed by user.");
+                if (paymentTimeoutRef.current) clearTimeout(paymentTimeoutRef.current);
                 setIsSubmittingPayment(false);
             }
         }
       };
 
-      console.log("[Payment] Step 3: Opening Razorpay modal, key prefix:", rzpKey.slice(0, 12));
       const rzp = new window.Razorpay(options);
       rzp.on('payment.failed', function(response) {
-        console.error("[Payment] Razorpay payment.failed:", response.error);
-        setAuthError(`Payment failed: ${response.error.description} (code: ${response.error.code})`);
+        if (paymentTimeoutRef.current) clearTimeout(paymentTimeoutRef.current);
+        setAuthError(`Payment failed: ${response.error.description}`);
         setIsSubmittingPayment(false);
       });
       rzp.open();
+
+      paymentTimeoutRef.current = setTimeout(() => {
+        setIsSubmittingPayment(false);
+        setAuthError("Taking longer than usual. If your payment went through, credits will appear shortly.");
+      }, 180000);
     } catch (err) {
-      console.error("[Payment] Caught error:", err);
       setAuthError(`Technical Error: ${err.message}`);
       setIsSubmittingPayment(false);
     }
@@ -385,7 +388,7 @@ const App = () => {
   const callGemini = async (prompt, model, isAudio = false) => {
     const activeKey = isAudio ? voiceApiKey : brainApiKey;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
-    const payload = { contents: [{ parts: [{ text: prompt }] }], ...(isAudio && { generationConfig: { responseModalalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } } } }) };
+    const payload = { contents: [{ parts: [{ text: prompt }] }], ...(isAudio && { generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } } } }) };
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!response.ok) { const err = await response.json(); return { error: true, message: err.error?.message }; }
     return await response.json();
@@ -412,7 +415,7 @@ const App = () => {
     }
     setIsGeneratingAudio(true); setLocalVoiceCount(prev => prev + 1); setAudioProgress(20);
     try {
-      const internalPrompt = `Theatrical script producer. Refine for high-converting ${selectedTone} commercial in ${selectedLanguage.label}. Preserve original wording. Plain text only. Text: "${text}"`;
+      const internalPrompt = `Theatrical script producer. Refine for high-converting ${selectedTone} commercial in ${selectedLanguage.label}. Deliver ${selectedSpeed.instruction}. Preserve original wording. Plain text only. Text: "${text}"`;
       const res1 = await callGemini(internalPrompt, BRAIN_MODEL);
       const refinedScript = res1.error ? text : res1.candidates?.[0]?.content?.parts?.[0]?.text;
       setAudioProgress(60);
@@ -425,6 +428,7 @@ const App = () => {
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
       const blob = pcmToWav(bytes.buffer, sampleRate);
+      if (audioUrl) setPrevAudioUrl(audioUrl);
       setAudioUrl(URL.createObjectURL(blob)); setAudioBlob(blob); setAudioProgress(100);
       setTimeout(() => { setIsGeneratingAudio(false); setAudioProgress(0); }, 500);
     } catch (err) { setError(err.message); setIsGeneratingAudio(false); }
@@ -583,17 +587,27 @@ const App = () => {
             <h3 className={`text-2xl font-black ${t.textHead}`}>{getModalContent().title}</h3>
             <button onClick={signInWithGoogle} disabled={isAuthLoading} className="w-full py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg hover:bg-slate-100 transition-all border border-slate-200 disabled:opacity-50"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" /> Connect with Google</button>
             <div className="flex items-center gap-4 py-1"><div className="h-px bg-white/10 flex-1" /><span className="text-[10px] font-black text-slate-500 uppercase">or</span><div className="h-px bg-white/10 flex-1" /></div>
-            <div className="flex bg-black/40 p-1 rounded-2xl border border-white/5 w-full">
-              <button onClick={() => setAuthMode('signup')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'signup' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Sign Up</button>
-              <button onClick={() => setAuthMode('login')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'login' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Login</button>
-            </div>
+            {authMode !== 'reset' && (
+              <div className="flex bg-black/40 p-1 rounded-2xl border border-white/5 w-full">
+                <button onClick={() => setAuthMode('signup')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'signup' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Sign Up</button>
+                <button onClick={() => setAuthMode('login')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'login' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Login</button>
+              </div>
+            )}
+            {authMode === 'reset' && <p className="text-slate-400 text-xs text-center">Enter your email and we'll send a reset link.</p>}
+            {authMessage && <p className="text-emerald-400 text-xs font-bold text-center bg-emerald-500/10 border border-emerald-500/20 rounded-xl py-3 px-4">{authMessage}</p>}
             <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
               <input type="email" placeholder="Work Email" className={`w-full p-4 rounded-2xl outline-none border transition-all ${t.input} text-sm`} value={email} onChange={e => setEmail(e.target.value)} required />
-              <div className="relative">
-                <input type={showPassword ? "text" : "password"} placeholder="Password" className={`w-full p-4 rounded-2xl outline-none border transition-all ${t.input} text-sm`} value={password} onChange={e => setPassword(e.target.value)} required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-4 text-slate-500">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
-              </div>
-              <button type="submit" disabled={isAuthLoading} className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${t.accent} shadow-xl shadow-indigo-500/20 disabled:opacity-50`}>{authMode === 'signup' ? "Create Account" : "Access Studio"}</button>
+              {authMode !== 'reset' && (
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} placeholder="Password" className={`w-full p-4 rounded-2xl outline-none border transition-all ${t.input} text-sm`} value={password} onChange={e => setPassword(e.target.value)} required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-4 text-slate-500">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                </div>
+              )}
+              <button type="submit" disabled={isAuthLoading} className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${t.accent} shadow-xl shadow-indigo-500/20 disabled:opacity-50`}>
+                {authMode === 'signup' ? "Create Account" : authMode === 'login' ? "Access Studio" : "Send Reset Link"}
+              </button>
+              {authMode === 'login' && <button type="button" onClick={() => { setAuthMode('reset'); setAuthMessage(''); setAuthError(''); }} className="w-full text-center text-[10px] text-slate-500 hover:text-indigo-400 font-bold transition-all">Forgot Password?</button>}
+              {authMode === 'reset' && <button type="button" onClick={() => setAuthMode('login')} className="w-full text-center text-[10px] text-slate-500 hover:text-indigo-400 font-bold transition-all">Back to Login</button>}
             </form>
           </div>
         </div>
@@ -651,6 +665,7 @@ const App = () => {
                </div>
                <input id="imageInput" type="file" className="hidden" accept="image/*,video/*" onChange={(e) => {
                 const file = e.target.files[0]; if (!file) return;
+                if (file.size > 50 * 1024 * 1024) { setError("File too large. Please use a file under 50MB."); return; }
                 setAssetType(file.type.startsWith('video') ? 'video' : 'image');
                 const reader = new FileReader(); reader.onload = (ev) => { setImage(ev.target.result); setStep(1); }; reader.readAsDataURL(file);
               }} />
@@ -688,9 +703,13 @@ const App = () => {
                   <div className="space-y-3">
                      <div className="flex items-center justify-between px-1">
                         <label className={`font-black text-[10px] uppercase tracking-widest ${t.textBody}`}>Script Master</label>
-                        <button onClick={() => setShowMagicWand(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Magic Wand</button>
+                        <button onClick={() => { setMagicPrompt(text || ""); setShowMagicWand(true); }} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Magic Wand</button>
                      </div>
                      <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type ad text here..." />
+                     <div className="flex justify-between px-2 pt-1">
+                       <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{text.trim() ? text.trim().split(/\s+/).length : 0} words · ~{Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / 2.5)}s</span>
+                       {usage.tier !== 'paid' && <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 2 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/3 free voices used</span>}
+                     </div>
                   </div>
 
                   {/* GRID ALIGNMENT: 4 Equal Columns */}
@@ -725,14 +744,28 @@ const App = () => {
                     {isGeneratingAudio ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Volume2 className="w-7 h-7" />}
                     {isGeneratingAudio ? "Producing Talent..." : "Generate AI Voiceover"}
                   </button>
+                  {isGeneratingAudio && audioProgress > 0 && (
+                    <div className="space-y-1.5 px-1 animate-in fade-in">
+                      <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-indigo-400"><span>{audioProgress < 60 ? "Refining Script..." : "Synthesising Voice..."}</span><span>{audioProgress}%</span></div>
+                      <div className="h-1 bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-700" style={{ width: `${audioProgress}%` }} /></div>
+                    </div>
+                  )}
 
                   {audioUrl && !isGeneratingAudio && (
-                     <div className={`p-6 md:p-8 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 border-2 animate-in slide-in-from-top-4 bg-slate-900/50 border-white/5 shadow-2xl`}>
-                        <div className="flex-1 w-full space-y-3 text-center md:text-left">
-                           <p className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">Audition Preview</p>
-                           <audio controls src={audioUrl} className="w-full h-10 invert opacity-80" />
+                     <div className={`p-6 md:p-8 rounded-[2.5rem] flex flex-col gap-4 border-2 animate-in slide-in-from-top-4 bg-slate-900/50 border-white/5 shadow-2xl`}>
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                           <div className="flex-1 w-full space-y-3 text-center md:text-left">
+                              <p className="text-indigo-400 font-black text-[10px] uppercase tracking-widest">Take 1 — Audition Preview</p>
+                              <audio controls src={audioUrl} className="w-full h-10 invert opacity-80" />
+                           </div>
+                           <button onClick={() => setStep(3)} className={`w-full md:w-auto px-12 py-5 rounded-2xl font-black text-sm md:text-base shadow-xl flex items-center justify-center gap-3 ${t.accent} active:scale-95`}><Video className="w-5 h-5" /> Mastering Studio</button>
                         </div>
-                        <button onClick={() => setStep(3)} className={`w-full md:w-auto px-12 py-5 rounded-2xl font-black text-sm md:text-base shadow-xl flex items-center justify-center gap-3 ${t.accent} active:scale-95`}><Video className="w-5 h-5" /> Mastering Studio</button>
+                        {prevAudioUrl && (
+                           <div className="border-t border-white/5 pt-4 space-y-2">
+                              <p className="text-slate-500 font-black text-[9px] uppercase tracking-widest">Previous Take</p>
+                              <audio controls src={prevAudioUrl} className="w-full h-8 invert opacity-40" />
+                           </div>
+                        )}
                      </div>
                   )}
 
@@ -764,7 +797,7 @@ const App = () => {
                     <div className="space-y-4">
                       <button disabled={isCreatingVideo} onClick={createVideo} className={`w-full py-5 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isCreatingVideo ? 'bg-slate-700' : t.accent}`}>
                         {isCreatingVideo ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
-                        {isCreatingVideo ? "Mastering Production..." : "Export High-Fidelity Ad"}
+                        {isCreatingVideo ? "Mastering Production..." : <span className="flex items-center gap-3">Export High-Fidelity Ad <span className="text-[9px] font-black bg-white/10 px-2 py-1 rounded-full">1 CREDIT</span></span>}
                       </button>
                       {isCreatingVideo && (
                          <div className="space-y-2 px-2 animate-in fade-in">
@@ -790,7 +823,7 @@ const App = () => {
               <div className="flex flex-col gap-3 md:gap-4 max-w-sm mx-auto px-4">
                  <button onClick={() => handleDownloadClick('video')} className={`px-10 py-5 md:px-12 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-lg md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${t.accent} active:scale-95`}><Download className="w-6 h-6 md:w-7 md:h-7" /> Download Video</button>
                  <button onClick={() => handleDownloadClick('audio')} className="px-10 py-4 border-2 border-slate-700 rounded-xl md:rounded-2xl font-black uppercase text-[10px] text-slate-400 flex items-center justify-center gap-3 hover:text-white transition-all"><Music className="w-4 h-4 md:w-5 md:h-5" /> Audio Only</button>
-                 <button onClick={() => { setImage(null); setStep(0); setText(""); setAudioUrl(null); setFinalVideoUrl(null); setLocalVoiceCount(0); }} className="py-4 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:text-slate-300">Start New Project</button>
+                 <button onClick={() => { setImage(null); setStep(0); setAudioUrl(null); setPrevAudioUrl(null); setFinalVideoUrl(null); setLocalVoiceCount(0); }} className="py-4 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:text-slate-300">Start New Project</button>
               </div>
             </div>
           )}
@@ -804,13 +837,18 @@ const App = () => {
             <div className="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mb-2"><Wand2 className="w-8 h-8" /></div>
             <h3 className="text-3xl font-black text-white tracking-tight">Magic Architect</h3>
             <p className="text-slate-400 text-sm">Target Language: <span className="text-indigo-400 font-bold">{selectedLanguage.label}</span></p>
-            <textarea className="w-full p-6 bg-slate-800 border-2 border-slate-700 rounded-2xl outline-none text-white focus:border-indigo-500 h-32" placeholder="e.g. A shoe brand summer sale..." value={magicPrompt} onChange={e => setMagicPrompt(e.target.value)} />
+            <textarea className="w-full p-6 bg-slate-800 border-2 border-slate-700 rounded-2xl outline-none text-white focus:border-indigo-500 h-32" placeholder="e.g. A shoe brand summer sale, 15 second TV spot..." value={magicPrompt} onChange={e => setMagicPrompt(e.target.value)} />
+            {authError && <p className="text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{authError}</p>}
             <button onClick={async () => {
-                setIsGeneratingScript(true); try {
+                if (!magicPrompt.trim()) return;
+                setIsGeneratingScript(true); setAuthError("");
+                try {
                   const prompt = `Ad copywriter. Describe: "${magicPrompt}". Language: ${selectedLanguage.label}. Write 15s commercial script. Max 40 words. Plain text only.`;
                   const res = await callGemini(prompt, BRAIN_MODEL);
-                  setText(res.candidates?.[0]?.content?.[0]?.parts?.[0]?.text?.replace(/```/g, '') || ""); setShowMagicWand(false);
-                } catch (e) { setError(e.message); } finally { setIsGeneratingScript(false); }
+                  const generated = res.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, '').trim();
+                  if (!generated) throw new Error("AI returned empty script. Try a more descriptive prompt.");
+                  setText(generated); setShowMagicWand(false);
+                } catch (e) { setAuthError(e.message); } finally { setIsGeneratingScript(false); }
             }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3">
               {isGeneratingScript ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
               {isGeneratingScript ? "Drafting..." : "Generate Magic Script"}
