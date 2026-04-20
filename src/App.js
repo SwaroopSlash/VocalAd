@@ -259,6 +259,26 @@ const App = () => {
   }, [step, videoDuration, previewDuration, assetType]);
 
   useEffect(() => {
+    if (!showVoiceTest) return;
+    const cacheKey = `${selectedVoice}|${selectedTone}|${selectedLanguage.id}`;
+    if (previewCacheRef.current[cacheKey]) setPreviewSampleUrl(previewCacheRef.current[cacheKey]);
+    else setPreviewSampleUrl(null);
+  }, [selectedVoice, selectedTone, selectedLanguage.id, showVoiceTest]);
+
+  useEffect(() => {
+    const v = previewVideoRef.current;
+    if (!v || assetType !== 'video' || step !== 3 || isPreviewPlaying) return;
+    if (videoMode === 'ai_director' && videoDuration && previewDuration) {
+      const safeOffset = Math.min(videoStartOffset, videoDuration - 0.5);
+      v.currentTime = safeOffset;
+      v.playbackRate = Math.min(Math.max((videoDuration - safeOffset) / previewDuration, 0.5), 2.0);
+    } else {
+      v.currentTime = 0;
+      v.playbackRate = 1;
+    }
+  }, [videoMode, videoStartOffset, videoDuration, previewDuration, step, assetType, isPreviewPlaying]);
+
+  useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setShowProfileDropdown(false);
     };
@@ -838,16 +858,17 @@ const App = () => {
                     </button>
                     {showVoiceTest && (
                       <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
-                        <button onClick={previewVoice} disabled={isPreviewing} className="w-full py-2.5 rounded-xl border border-slate-700 hover:border-indigo-500/50 font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-indigo-400 flex items-center justify-center gap-2 transition-all disabled:opacity-50 bg-black/20">
-                          {isPreviewing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                          {isPreviewing ? "Generating..." : "Play Sample Phrase"}
-                        </button>
-                        {previewSampleUrl && !isPreviewing && (
+                        {previewSampleUrl ? (
                           <div className="flex items-center gap-3 px-4 py-3 bg-slate-900/60 border border-white/5 rounded-2xl animate-in fade-in">
                             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap">Sample</span>
-                            <audio controls autoPlay src={previewSampleUrl} className="flex-1 h-7 invert opacity-70" />
+                            <audio controls autoPlay src={previewSampleUrl} controlsList="nodownload noplaybackrate" className="flex-1 h-7 invert opacity-70" />
                             <button onClick={() => setPreviewSampleUrl(null)} className="text-slate-600 hover:text-slate-400"><X className="w-3.5 h-3.5" /></button>
                           </div>
+                        ) : (
+                          <button onClick={previewVoice} disabled={isPreviewing} className="w-full py-2.5 rounded-xl border border-slate-700 hover:border-indigo-500/50 font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-indigo-400 flex items-center justify-center gap-2 transition-all disabled:opacity-50 bg-black/20">
+                            {isPreviewing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                            {isPreviewing ? "Generating..." : "Play Sample Phrase"}
+                          </button>
                         )}
                       </div>
                     )}
@@ -881,7 +902,7 @@ const App = () => {
                               : <button onClick={() => setSelectedTakeIdx(idx)} className="text-[9px] font-black text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-2 py-1 rounded-full transition-all">Use This Take</button>
                             }
                           </div>
-                          <audio controls src={take.url} className="w-full h-8 invert opacity-80" />
+                          <audio controls src={take.url} controlsList="nodownload noplaybackrate" className="w-full h-8 invert opacity-80" />
                         </div>
                       ))}
                     </div>
@@ -915,6 +936,12 @@ const App = () => {
                     {assetType === 'video' && (() => {
                       const ratio = previewDuration && videoDuration ? previewDuration / videoDuration : null;
                       const recommendedMode = ratio === null ? null : ratio < 0.5 ? 'ai_director' : ratio > 1.5 ? 'loop' : 'freeze';
+                      const vSec = videoDuration ? Math.round(videoDuration) : 0;
+                      const aSec = previewDuration ? Math.round(previewDuration) : 0;
+                      const recommendationMessage = ratio === null ? null
+                        : ratio < 0.5 ? `Your video (${vSec}s) is much longer than your voice (${aSec}s) — AI Director picks your best moment and fits it perfectly`
+                        : ratio > 1.5 ? `Your voice (${aSec}s) is longer than your video (${vSec}s) — Loop replays it smoothly until the end`
+                        : `Lengths are close — Freeze plays your video once and holds the last frame cleanly`;
                       const modeDescriptions = {
                         loop: "Video replays from start until your audio ends",
                         freeze: "Video plays once then holds the last frame",
@@ -923,11 +950,11 @@ const App = () => {
                       return (
                       <div className="space-y-3">
                         <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody}`}>Video Mode</label>
+                        {recommendationMessage && <p className="text-[9px] text-emerald-400/80 font-black px-1 leading-relaxed">{recommendationMessage}</p>}
                         <div className={`flex gap-1.5 bg-black/40 p-1.5 rounded-xl border border-white/5`}>
                           {[{id:'loop',label:'Loop'},{id:'freeze',label:'Freeze'},{id:'ai_director',label:'AI Director ✦'}].map(m => (
-                            <button key={m.id} onClick={() => setVideoMode(m.id)} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all relative ${videoMode === m.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                            <button key={m.id} onClick={() => setVideoMode(m.id)} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all relative ${videoMode === m.id ? 'bg-indigo-600 text-white shadow-lg' : recommendedMode === m.id ? 'text-emerald-400 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300'}`}>
                               {m.label}
-                              {recommendedMode === m.id && videoMode !== m.id && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[7px] font-black uppercase tracking-wider text-emerald-400 whitespace-nowrap">Best fit</span>}
                             </button>
                           ))}
                         </div>
@@ -969,11 +996,11 @@ const App = () => {
               <div className="w-20 h-20 md:w-24 md:h-24 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto border-2 border-green-500/20 shadow-[0_0_50px_rgba(34,197,94,0.1)]"><CheckCircle className="w-10 h-10 md:w-12 md:h-12" /></div>
               <h2 className={`text-4xl md:text-6xl font-black tracking-tighter ${t.textHead}`}>Production Ready!</h2>
               <div className="bg-black p-3 md:p-4 rounded-[3rem] md:rounded-[4rem] max-w-[240px] md:max-w-sm mx-auto shadow-2xl border-[8px] md:border-[12px] border-slate-900" style={{ aspectRatio: selectedRatio.ratio }}>
-                {finalVideoUrl && <video controls autoPlay className="w-full h-full rounded-[2rem] md:rounded-[2.5rem]" src={finalVideoUrl} />}
+                {finalVideoUrl && <video controls autoPlay controlsList="nodownload noplaybackrate" className="w-full h-full rounded-[2rem] md:rounded-[2.5rem]" src={finalVideoUrl} />}
               </div>
               <div className="flex flex-col gap-3 md:gap-4 max-w-sm mx-auto px-4">
-                 <button onClick={() => handleDownloadClick('video')} className={`px-10 py-5 md:px-12 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-lg md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${t.accent} active:scale-95`}><Download className="w-6 h-6 md:w-7 md:h-7" /> Download Ad Video (.webm)</button>
-                 <button onClick={() => handleDownloadClick('audio')} className="px-10 py-4 border-2 border-slate-700 rounded-xl md:rounded-2xl font-black uppercase text-[10px] text-slate-400 flex items-center justify-center gap-3 hover:text-white transition-all"><Music className="w-4 h-4 md:w-5 md:h-5" /> Download Voiceover (.wav)</button>
+                 <button onClick={() => handleDownloadClick('video')} className={`px-10 py-5 md:px-12 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-lg md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${t.accent} active:scale-95`}><Download className="w-6 h-6 md:w-7 md:h-7" /> Download Your VocalAd</button>
+                 <button onClick={() => handleDownloadClick('audio')} className="px-10 py-4 border-2 border-slate-700 rounded-xl md:rounded-2xl font-black uppercase text-[10px] text-slate-400 flex items-center justify-center gap-3 hover:text-white transition-all"><Music className="w-4 h-4 md:w-5 md:h-5" /> Download Voiceover Only (.wav)</button>
                  <button onClick={() => { setImage(null); setStep(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setLocalVoiceCount(0); }} className="py-4 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:text-slate-300">Start New Project</button>
               </div>
             </div>
