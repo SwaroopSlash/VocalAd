@@ -999,7 +999,7 @@ const App = () => {
                 if (!magicPrompt.trim()) return;
                 setIsGeneratingScript(true); setAuthError("");
                 try {
-                  const prompt = `Ad copywriter. Describe: "${magicPrompt}". Language: ${selectedLanguage.label}. Write 15s commercial script. Max 40 words. Plain text only.`;
+                  const prompt = `You are an ad copywriter. Brief: "${magicPrompt}". Language: ${selectedLanguage.label}.\nWrite a 15-second commercial script — max 40 words — containing ONLY words to be spoken aloud.\nYou MAY use these Gemini TTS expression tags sparingly for vocal impact: [excited], [warm], [serious], [whispers], [short pause], [medium pause], [playful], [curious], [laughs], [sighs].\n${selectedLanguage.id !== 'en-IN' ? 'Keep all expression tags in English even if the script is in another language.\n' : ''}NEVER include sound effects, music cues, physical actions, or scene directions — no [knock on door], no [music plays], no SFX, no SSML.\nOutput the script only — no title, no labels, no explanation.`;
                   const res = await callGemini(prompt, BRAIN_MODEL);
                   if (res.error) throw new Error(res.message || "Gemini API error. Check your API key.");
                   const generated = res.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, '').trim();
