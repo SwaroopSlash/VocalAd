@@ -313,7 +313,7 @@ const App = () => {
   // Mobile back button — push a history entry on each step advance, pop = go back
   useEffect(() => {
     if (step === 0) return;
-    window.history.pushState({ step }, '');
+    try { window.history.pushState({ step }, ''); } catch (_) {}
     const handlePop = () => setStep(prev => Math.max(0, prev - 1));
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
