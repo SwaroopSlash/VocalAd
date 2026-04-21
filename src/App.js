@@ -535,7 +535,7 @@ const App = () => {
       else if (newCount === 4) { setSessionToast("Last voice remaining — choose your best take!"); setTimeout(() => setSessionToast(null), 4000); }
     } catch (err) {
       clearInterval(progressInterval);
-      setError(err.message);
+      setError("The AI is currently in high demand — please try again in a moment.");
       setIsGeneratingAudio(false);
     }
   };
@@ -784,7 +784,7 @@ const App = () => {
                       <p className="text-xs font-black truncate text-white mb-3">{user?.isAnonymous ? "Guest Ad-Maker" : user?.email}</p>
                       <div className="bg-black/40 p-2.5 rounded-lg border border-white/5 flex justify-between items-center">
                         <p className="text-lg font-black text-white leading-none">{usage.creditsRemaining ?? 0} Credits</p>
-                        <button onClick={() => {setShowUPIModal(true); setShowProfileDropdown(false);}} className="p-1.5 bg-indigo-500 text-white rounded-md"><CreditCard className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => { setShowProfileDropdown(false); handlePurchase(); }} className="p-1.5 bg-indigo-500 text-white rounded-md"><CreditCard className="w-3.5 h-3.5" /></button>
                       </div>
                    </div>
                    <div className="space-y-1 text-left">
@@ -835,8 +835,19 @@ const App = () => {
           )}
 
           {step === 1 && (
-            <div className="space-y-8 animate-in slide-in-from-bottom-6">
-              <h2 className={`text-2xl md:text-4xl font-black tracking-tighter ${t.textHead}`}>1. Delivery Style</h2>
+            <div className="space-y-6 animate-in slide-in-from-bottom-6 pb-24">
+              {/* Step indicator */}
+              <div className="flex items-center justify-center gap-0 pt-2">
+                {[{n:1,label:'Style'},{n:2,label:'Voice'},{n:3,label:'Mix'}].map(({n,label},i) => (
+                  <React.Fragment key={n}>
+                    <div className="flex flex-col items-center gap-1.5">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-all ${step===n ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.5)]' : step>n ? 'border-indigo-700 bg-indigo-700/20 text-indigo-600' : 'border-slate-700 text-slate-600'}`}>{n}</div>
+                      <span className={`text-[8px] font-black uppercase tracking-widest ${step===n?'text-indigo-400':step>n?'text-indigo-700':'text-slate-600'}`}>{label}</span>
+                    </div>
+                    {i < 2 && <div className={`w-12 md:w-16 h-px mb-5 mx-1 transition-all ${step>n?'bg-indigo-700':'bg-slate-800'}`} />}
+                  </React.Fragment>
+                ))}
+              </div>
               <div className="flex justify-center gap-2 bg-black/40 p-1.5 rounded-xl w-fit mx-auto border border-white/5">
                   <button onClick={() => { setFitMode('cover'); setImgTransform({ x: 0, y: 0, scale: 1, rotate: 0 }); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'cover' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fill Screen</button>
                   <button onClick={() => { setFitMode('contain'); setImgTransform({ x: 0, y: 0, scale: 1, rotate: 0 }); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'contain' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fit Entire</button>
@@ -899,15 +910,31 @@ const App = () => {
                 </div>
               </div>
               <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-1">Pinch to zoom · Drag to reframe</p>
-              <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-4">
-                 <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] uppercase`}>Back</button>
-                 <button onClick={() => setStep(2)} className={`px-10 py-4 rounded-xl font-black text-sm flex items-center gap-2 shadow-xl ${t.accent}`}>Voice Studio <ChevronRight className="w-4 h-4" /></button>
+            </div>
+          )}
+          {step === 1 && (
+            <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-3 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent pointer-events-none">
+              <div className="max-w-6xl mx-auto flex justify-between items-center pointer-events-auto">
+                <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] uppercase px-4 py-3`}>Back</button>
+                <button onClick={() => setStep(2)} className={`px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-2 shadow-2xl ${t.accent}`}>Go to Voice Studio <ChevronRight className="w-4 h-4" /></button>
               </div>
             </div>
           )}
 
           {step === 2 && (
             <div className="space-y-8 animate-in slide-in-from-bottom-10 max-w-5xl mx-auto">
+              {/* Step indicator */}
+              <div className="flex items-center justify-center gap-0 pt-2">
+                {[{n:1,label:'Style'},{n:2,label:'Voice'},{n:3,label:'Mix'}].map(({n,label},i) => (
+                  <React.Fragment key={n}>
+                    <div className="flex flex-col items-center gap-1.5">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-all ${step===n ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.5)]' : step>n ? 'border-indigo-700 bg-indigo-700/20 text-indigo-600' : 'border-slate-700 text-slate-600'}`}>{n}</div>
+                      <span className={`text-[8px] font-black uppercase tracking-widest ${step===n?'text-indigo-400':step>n?'text-indigo-700':'text-slate-600'}`}>{label}</span>
+                    </div>
+                    {i < 2 && <div className={`w-12 md:w-16 h-px mb-5 mx-1 transition-all ${step>n?'bg-indigo-700':'bg-slate-800'}`} />}
+                  </React.Fragment>
+                ))}
+              </div>
                <div className="flex flex-col gap-6 md:gap-8 text-left">
                   <div className="space-y-3">
                      <div className="flex items-center justify-between px-1">
@@ -1017,7 +1044,19 @@ const App = () => {
           )}
 
           {step === 3 && (
-            <div className="py-4 md:py-6 space-y-10 animate-in fade-in max-w-5xl mx-auto">
+            <div className="py-4 md:py-6 space-y-8 animate-in fade-in max-w-5xl mx-auto">
+              {/* Step indicator */}
+              <div className="flex items-center justify-center gap-0 pt-2">
+                {[{n:1,label:'Style'},{n:2,label:'Voice'},{n:3,label:'Mix'}].map(({n,label},i) => (
+                  <React.Fragment key={n}>
+                    <div className="flex flex-col items-center gap-1.5">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-all ${step===n ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.5)]' : step>n ? 'border-indigo-700 bg-indigo-700/20 text-indigo-600' : 'border-slate-700 text-slate-600'}`}>{n}</div>
+                      <span className={`text-[8px] font-black uppercase tracking-widest ${step===n?'text-indigo-400':step>n?'text-indigo-700':'text-slate-600'}`}>{label}</span>
+                    </div>
+                    {i < 2 && <div className={`w-12 md:w-16 h-px mb-5 mx-1 transition-all ${step>n?'bg-indigo-700':'bg-slate-800'}`} />}
+                  </React.Fragment>
+                ))}
+              </div>
               <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
                 <div className="flex flex-col items-center gap-2 mx-auto">
                   <p className="text-[9px] font-black uppercase tracking-widest text-slate-600">Go back to step 1 to adjust framing</p>
