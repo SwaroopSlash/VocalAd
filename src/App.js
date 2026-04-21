@@ -790,7 +790,7 @@ const App = () => {
                 if (file.size > 50 * 1024 * 1024) { setError("File too large. Please use a file under 50MB."); return; }
                 const isVideo = file.type.startsWith('video') && file.type !== 'image/gif';
                 setAssetType(isVideo ? 'video' : 'image');
-                setImagePan({ x: 0, y: 0 });
+                setImgTransform({ x: 0, y: 0, scale: 1 });
                 const reader = new FileReader(); reader.onload = (ev) => { setImage(ev.target.result); setStep(1); }; reader.readAsDataURL(file);
               }} />
             </div>
