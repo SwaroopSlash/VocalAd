@@ -787,7 +787,7 @@ const App = () => {
                   : <video src={image} muted autoPlay loop className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} />}
               </div>
               {assetType === 'image' && fitMode === 'cover' && (
-                <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-2">Drag preview to reframe</p>
+                <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-2">Slide image to reframe focus</p>
               )}
               <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-4">
                  <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] uppercase`}>Back</button>
@@ -882,7 +882,22 @@ const App = () => {
                           <audio controls src={take.url} controlsList="nodownload noplaybackrate" className="w-full h-8 invert opacity-80" onClick={e => e.stopPropagation()} />
                         </div>
                       ))}
-                      <button onClick={() => setShowMixPopup(true)} className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg ${t.accent} active:scale-95`}><Video className="w-4 h-4" /> Finalize Your Ad →</button>
+                      <button onClick={async () => {
+                        if (assetType !== 'video') { setStep(3); return; }
+                        // Read audio duration from the blob directly — previewAudioRef not mounted yet
+                        let aDur = 0;
+                        try {
+                          const blob = audioTakes[selectedTakeIdx]?.blob;
+                          if (blob) {
+                            const ac = new (window.AudioContext || window.webkitAudioContext)();
+                            const buf = await ac.decodeAudioData(await blob.arrayBuffer());
+                            aDur = buf.duration;
+                            ac.close();
+                          }
+                        } catch (_) {}
+                        setPreviewDuration(aDur);
+                        setShowMixPopup(true);
+                      }} className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg ${t.accent} active:scale-95`}><Video className="w-4 h-4" /> Finalize Your Ad →</button>
                     </div>
                   )}
 
@@ -931,9 +946,9 @@ const App = () => {
                         : ratio > 1.5 ? `Your voice (${aSec}s) is longer than your video (${vSec}s) — Loop Video replays it smoothly until the end`
                         : `Lengths are close — Freeze Frame plays your video once and holds the last shot cleanly`;
                       const modeDescriptions = {
-                        loop: "Video replays from the start until your voiceover ends",
-                        freeze: "Video plays once then holds on the last frame",
-                        ai_director: "AI auto-adjusts video speed to match your voiceover · pick your start scene below"
+                        loop: "Keep it rolling — replays until your voice ends",
+                        freeze: "End on a strong frame — plays once, holds the last shot",
+                        ai_director: "Let AI handle the pace — speed-matched to your voice"
                       };
                       return (
                       <div className="space-y-3">
@@ -1020,16 +1035,16 @@ const App = () => {
         const vSec = videoDuration ? Math.round(videoDuration) : 0;
         const aSec = previewDuration ? Math.round(previewDuration) : 0;
         const ratio = previewDuration && videoDuration ? previewDuration / videoDuration : null;
-        const isBadFit = ratio !== null && (ratio < 0.1 || ratio > 10);
+        const isBadFit = ratio !== null && (ratio < 0.15 || ratio > 6);
         const isGoodFit = ratio !== null && ratio >= 0.5 && ratio <= 1.5;
         const recommendedMode = ratio === null ? 'loop' : ratio < 0.5 ? 'ai_director' : ratio > 1.5 ? 'loop' : 'freeze';
         const { title, body, color } = isBadFit
-          ? { title: "Poor match", body: `Your voice (${aSec}s) and video (${vSec}s) are very different lengths. All mixing styles will produce a short ad. For best results, record a longer voiceover or use a shorter video clip.`, color: 'amber' }
+          ? { title: "Poor match", body: `Your voice (${aSec}s) and video (${vSec}s) lengths are very far apart — all mixing styles will give a similar short result. For best results, try a longer voiceover or a shorter video clip.`, color: 'amber' }
           : isGoodFit
-          ? { title: "Great match!", body: `Your voice (${aSec}s) and video (${vSec}s) are well matched. We've selected Freeze Frame — your video plays once cleanly.`, color: 'emerald' }
+          ? { title: "Great match!", body: `Your voice (${aSec}s) and video (${vSec}s) are well matched. Freeze Frame will play your video once, cleanly.`, color: 'emerald' }
           : ratio < 0.5
-          ? { title: "Auto Fit recommended", body: `Your video (${vSec}s) is longer than your voice (${aSec}s). Auto Fit will speed-match the video to your voiceover.`, color: 'indigo' }
-          : { title: "Loop Video recommended", body: `Your voice (${aSec}s) is longer than your video (${vSec}s). Loop Video will replay your clip smoothly until the voiceover ends.`, color: 'indigo' };
+          ? { title: "Auto Fit recommended", body: `Your video (${vSec}s) is longer than your voice (${aSec}s). Auto Fit speeds the video to match your voiceover — no wasted frames.`, color: 'indigo' }
+          : { title: "Loop Video recommended", body: `Your voice (${aSec}s) is longer than your video (${vSec}s). Loop Video replays your clip seamlessly until the voiceover ends.`, color: 'indigo' };
         const colorMap = { emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', amber: 'text-amber-400 bg-amber-500/10 border-amber-500/20', indigo: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' };
         return (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl">
