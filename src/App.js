@@ -152,6 +152,17 @@ const THEMES = {
   }
 };
 
+const FILTERS = [
+  { id: 'none',     label: 'Original', css: 'none' },
+  { id: 'vivid',    label: 'Vivid',    css: 'saturate(1.5) contrast(1.1)' },
+  { id: 'warm',     label: 'Warm',     css: 'sepia(0.45) brightness(1.05) saturate(1.2)' },
+  { id: 'cool',     label: 'Cool',     css: 'saturate(0.8) brightness(1.05) hue-rotate(195deg)' },
+  { id: 'bw',       label: 'B&W',      css: 'grayscale(1) contrast(1.1)' },
+  { id: 'fade',     label: 'Fade',     css: 'contrast(0.82) brightness(1.12) saturate(0.75)' },
+  { id: 'drama',    label: 'Drama',    css: 'contrast(1.35) brightness(0.88) saturate(1.1)' },
+  { id: 'cinematic',label: 'Cinema',   css: 'contrast(1.12) saturate(0.78) brightness(0.94)' },
+];
+
 const App = () => {
   const [currentTheme] = useState('studio');
   const t = THEMES[currentTheme];
@@ -202,8 +213,10 @@ const App = () => {
   const [showVoiceTest, setShowVoiceTest] = useState(false);
   const previewCacheRef = useRef({});
   const [showMixPopup, setShowMixPopup] = useState(false);
-  const [imagePan, setImagePan] = useState({ x: 0, y: 0 });
+  const [imgTransform, setImgTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [selectedFilter, setSelectedFilter] = useState('none');
   const panStartRef = useRef(null);
+  const pinchStartRef = useRef(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -557,8 +570,13 @@ const App = () => {
         if (assetRatio > canvasRatio) { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
         else { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
       }
-      // Apply user pan offset for images
-      if (assetType === 'image') { ox += imagePan.x * (dw - canvas.width); oy += imagePan.y * (dh - canvas.height); }
+      // Apply transform (pan + zoom) for images
+      if (assetType === 'image') {
+        dw *= imgTransform.scale; dh *= imgTransform.scale;
+        ox = (canvas.width - dw) / 2 + imgTransform.x;
+        oy = (canvas.height - dh) / 2 + imgTransform.y;
+      }
+      const activeFilter = FILTERS.find(f => f.id === selectedFilter)?.css || 'none';
       const stream = canvas.captureStream(30);
       const audioStream = audioContext.createMediaStreamDestination();
       const voiceSource = audioContext.createBufferSource(); voiceSource.buffer = voiceBuffer; voiceSource.connect(audioStream);
@@ -578,7 +596,9 @@ const App = () => {
         setMasteringProgress(Math.min(Math.round((elapsed / duration) * 100), 99));
         ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         if (fitMode !== 'cover') { ctx.save(); ctx.filter = 'blur(60px) brightness(0.4)'; ctx.drawImage(assetElement, -canvas.width, -canvas.height, canvas.width * 3, canvas.height * 3); ctx.restore(); }
+        ctx.filter = activeFilter;
         ctx.drawImage(assetElement, ox, oy, dw, dh);
+        ctx.filter = 'none';
         if (elapsed >= fadeStart) { const a = Math.min((elapsed - fadeStart) / 0.8, 1); ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
         animFrameId = requestAnimationFrame(renderFrame);
       };
@@ -788,23 +808,34 @@ const App = () => {
                 ))}
               </div>
               <div className="flex justify-center gap-2 bg-black/40 p-1.5 rounded-xl w-fit mx-auto border border-white/5">
-                  <button onClick={() => setFitMode('cover')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'cover' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fill Screen</button>
-                  <button onClick={() => setFitMode('contain')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'contain' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fit Entire</button>
+                  <button onClick={() => { setFitMode('cover'); setImgTransform({ x: 0, y: 0, scale: 1 }); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'cover' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fill Screen</button>
+                  <button onClick={() => { setFitMode('contain'); setImgTransform({ x: 0, y: 0, scale: 1 }); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'contain' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fit Entire</button>
               </div>
-              <div className="relative mx-auto bg-black rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl border-4 md:border-8 border-slate-800" style={{ width: '220px', aspectRatio: selectedRatio.ratio }}>
-                {assetType === 'image'
-                  ? <img src={image} draggable={false}
-                      className={`w-full h-full select-none ${fitMode === 'cover' ? 'object-cover cursor-grab active:cursor-grabbing' : 'object-contain'}`}
-                      style={{ objectPosition: `${50 + imagePan.x * 50}% ${50 + imagePan.y * 50}%`, touchAction: 'none' }}
-                      onPointerDown={fitMode === 'cover' ? (e) => { e.currentTarget.setPointerCapture(e.pointerId); panStartRef.current = { mx: e.clientX, my: e.clientY, px: imagePan.x, py: imagePan.y }; } : undefined}
-                      onPointerMove={fitMode === 'cover' ? (e) => { if (!panStartRef.current) return; const dx = (e.clientX - panStartRef.current.mx) / 80; const dy = (e.clientY - panStartRef.current.my) / 80; setImagePan({ x: Math.max(-1, Math.min(1, panStartRef.current.px - dx)), y: Math.max(-1, Math.min(1, panStartRef.current.py - dy)) }); } : undefined}
-                      onPointerUp={() => { panStartRef.current = null; }}
-                      alt="Preview" />
-                  : <video src={image} muted autoPlay loop className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} />}
+              <div className="flex items-center justify-center gap-3">
+                <div className="relative bg-black rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl border-4 md:border-8 border-slate-800 shrink-0" style={{ width: '200px', aspectRatio: selectedRatio.ratio }}>
+                  {assetType === 'image'
+                    ? <img src={image} draggable={false}
+                        className="w-full h-full select-none cursor-grab active:cursor-grabbing"
+                        style={{ objectFit: fitMode === 'cover' ? 'cover' : 'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css, transform: `translate(${imgTransform.x}px,${imgTransform.y}px) scale(${imgTransform.scale})`, transformOrigin: 'center', touchAction: 'none', transition: panStartRef.current ? 'none' : 'transform 0.1s' }}
+                        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); panStartRef.current = { mx: e.clientX, my: e.clientY, tx: imgTransform.x, ty: imgTransform.y, scale: imgTransform.scale }; }}
+                        onPointerMove={(e) => { if (!panStartRef.current) return; const dx = e.clientX - panStartRef.current.mx; const dy = e.clientY - panStartRef.current.my; const maxPan = 120 * panStartRef.current.scale; setImgTransform(t => ({ ...t, x: Math.max(-maxPan, Math.min(maxPan, panStartRef.current.tx + dx)), y: Math.max(-maxPan, Math.min(maxPan, panStartRef.current.ty + dy)) })); }}
+                        onPointerUp={() => { panStartRef.current = null; }}
+                        onTouchStart={(e) => { if (e.touches.length === 2) { pinchStartRef.current = { dist: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY), scale: imgTransform.scale }; } }}
+                        onTouchMove={(e) => { if (e.touches.length === 2 && pinchStartRef.current) { e.preventDefault(); const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); const newScale = Math.max(0.5, Math.min(4, pinchStartRef.current.scale * (dist / pinchStartRef.current.dist))); setImgTransform(t => ({ ...t, scale: newScale })); } }}
+                        onTouchEnd={() => { pinchStartRef.current = null; }}
+                        alt="Preview" />
+                    : <video src={image} muted autoPlay loop style={{ width:'100%', height:'100%', objectFit: fitMode==='cover'?'cover':'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css }} />}
+                </div>
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  {FILTERS.map(f => (
+                    <button key={f.id} onClick={() => setSelectedFilter(f.id)} className={`w-12 h-12 rounded-xl border-2 overflow-hidden transition-all relative ${selectedFilter === f.id ? 'border-indigo-500 shadow-lg shadow-indigo-500/30' : 'border-white/10 hover:border-white/30'}`} title={f.label}>
+                      <img src={image} draggable={false} className="w-full h-full object-cover" style={{ filter: f.css }} alt={f.label} />
+                      <span className="absolute bottom-0 left-0 right-0 text-[6px] font-black text-center bg-black/60 py-0.5 text-white leading-tight">{f.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              {assetType === 'image' && fitMode === 'cover' && (
-                <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-2">Slide to reframe</p>
-              )}
+              <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-1">Pinch to zoom · Drag to reframe</p>
               <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-4">
                  <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] uppercase`}>Back</button>
                  <button onClick={() => setStep(2)} className={`px-10 py-4 rounded-xl font-black text-sm flex items-center gap-2 shadow-xl ${t.accent}`}>Voice Studio <ChevronRight className="w-4 h-4" /></button>
@@ -925,17 +956,22 @@ const App = () => {
           {step === 3 && (
             <div className="py-4 md:py-6 space-y-10 animate-in fade-in max-w-5xl mx-auto">
               <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
-                {assetType === 'image' && fitMode === 'cover' && <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mb-2 w-[240px] md:w-[280px] mx-auto">Slide to reframe</p>}
-                <div className="relative group mx-auto bg-black rounded-[2.5rem] md:rounded-[3.5rem] overflow-hidden shadow-2xl border-[8px] md:border-[12px] border-slate-800 w-[240px] md:w-[280px]" style={{ aspectRatio: selectedRatio.ratio }}>
+                <div className="flex flex-col items-center gap-2 mx-auto">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-600">Pinch to zoom · Drag to reframe</p>
+                  <div className="flex items-center gap-3">
+                    <div className="relative group bg-black rounded-[2.5rem] md:rounded-[3.5rem] overflow-hidden shadow-2xl border-[8px] md:border-[12px] border-slate-800 w-[220px] md:w-[260px] shrink-0" style={{ aspectRatio: selectedRatio.ratio }}>
                    {assetType === 'image'
                      ? <img src={image} draggable={false}
-                         className={`w-full h-full select-none ${fitMode === 'cover' ? 'object-cover cursor-grab active:cursor-grabbing' : 'object-contain'}`}
-                         style={{ objectPosition: `${50 + imagePan.x * 50}% ${50 + imagePan.y * 50}%`, touchAction: 'none' }}
-                         onPointerDown={fitMode === 'cover' ? (e) => { e.currentTarget.setPointerCapture(e.pointerId); panStartRef.current = { mx: e.clientX, my: e.clientY, px: imagePan.x, py: imagePan.y }; } : undefined}
-                         onPointerMove={fitMode === 'cover' ? (e) => { if (!panStartRef.current) return; const dx = (e.clientX - panStartRef.current.mx) / 80; const dy = (e.clientY - panStartRef.current.my) / 80; setImagePan({ x: Math.max(-1, Math.min(1, panStartRef.current.px - dx)), y: Math.max(-1, Math.min(1, panStartRef.current.py - dy)) }); } : undefined}
+                         className="w-full h-full select-none cursor-grab active:cursor-grabbing"
+                         style={{ objectFit: fitMode==='cover'?'cover':'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css, transform: `translate(${imgTransform.x}px,${imgTransform.y}px) scale(${imgTransform.scale})`, transformOrigin:'center', touchAction:'none', transition: panStartRef.current?'none':'transform 0.1s' }}
+                         onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); panStartRef.current = { mx: e.clientX, my: e.clientY, tx: imgTransform.x, ty: imgTransform.y, scale: imgTransform.scale }; }}
+                         onPointerMove={(e) => { if (!panStartRef.current) return; const dx = e.clientX - panStartRef.current.mx; const dy = e.clientY - panStartRef.current.my; const maxPan = 120 * panStartRef.current.scale; setImgTransform(prev => ({ ...prev, x: Math.max(-maxPan, Math.min(maxPan, panStartRef.current.tx + dx)), y: Math.max(-maxPan, Math.min(maxPan, panStartRef.current.ty + dy)) })); }}
                          onPointerUp={() => { panStartRef.current = null; }}
+                         onTouchStart={(e) => { if (e.touches.length === 2) { pinchStartRef.current = { dist: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY), scale: imgTransform.scale }; } }}
+                         onTouchMove={(e) => { if (e.touches.length === 2 && pinchStartRef.current) { e.preventDefault(); const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); const newScale = Math.max(0.5, Math.min(4, pinchStartRef.current.scale * (dist / pinchStartRef.current.dist))); setImgTransform(prev => ({ ...prev, scale: newScale })); } }}
+                         onTouchEnd={() => { pinchStartRef.current = null; }}
                          alt="Mix" />
-                     : <video ref={previewVideoRef} src={image} muted className="w-full h-full object-cover" onLoadedMetadata={(e) => setVideoDuration(e.target.duration)} />}
+                     : <video ref={previewVideoRef} src={image} muted style={{ width:'100%', height:'100%', objectFit:'cover', filter: FILTERS.find(f=>f.id===selectedFilter)?.css }} onLoadedMetadata={(e) => setVideoDuration(e.target.duration)} />}
                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-6 md:p-8 opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex items-center justify-between gap-4">
                          <button onClick={() => setIsPreviewPlaying(!isPreviewPlaying)} className="w-12 h-12 md:w-14 md:h-14 bg-indigo-600 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all">{isPreviewPlaying ? <Pause className="w-5 h-5 md:w-6 md:h-6 fill-white" /> : <Play className="w-5 h-5 md:w-6 md:h-6 fill-white ml-0.5 md:ml-1" />}</button>
@@ -947,6 +983,17 @@ const App = () => {
                    </div>
                    {!isPreviewPlaying && <div onClick={() => setIsPreviewPlaying(true)} className="absolute inset-0 flex items-center justify-center bg-black/20 cursor-pointer"><div className="w-16 h-16 md:w-20 md:h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20"><Play className="w-7 h-7 md:w-8 md:h-8 fill-white ml-1" /></div></div>}
                    <audio ref={previewAudioRef} src={audioTakes[selectedTakeIdx]?.url} onEnded={() => setIsPreviewPlaying(false)} className="hidden" />
+                    </div>
+                    {/* Filter strip — vertical on desktop right side */}
+                    <div className="flex flex-row lg:flex-col gap-1.5 overflow-x-auto lg:overflow-y-auto lg:max-h-[420px] pb-1 lg:pb-0">
+                      {FILTERS.map(f => (
+                        <button key={f.id} onClick={() => setSelectedFilter(f.id)} className={`w-12 h-12 rounded-xl border-2 overflow-hidden transition-all relative shrink-0 ${selectedFilter === f.id ? 'border-indigo-500 shadow-lg shadow-indigo-500/20' : 'border-white/10 hover:border-white/30'}`} title={f.label}>
+                          <img src={image} draggable={false} className="w-full h-full object-cover" style={{ filter: f.css }} alt={f.label} />
+                          <span className="absolute bottom-0 left-0 right-0 text-[6px] font-black text-center bg-black/70 py-0.5 text-white leading-tight">{f.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-6 md:space-y-8 w-full text-left p-2">
                   <div className="space-y-2"><h2 className={`text-3xl md:text-4xl font-black tracking-tighter ${t.textHead}`}>Final Mix</h2><p className={`text-[13px] md:text-sm ${t.textBody}`}>Preview your ad and download when ready.</p></div>
