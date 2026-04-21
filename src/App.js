@@ -1064,36 +1064,6 @@ const App = () => {
                           <audio controls src={take.url} controlsList="nodownload noplaybackrate" className="w-full h-8 invert opacity-80" onClick={e => e.stopPropagation()} />
                         </div>
                       ))}
-                      <button onClick={async () => {
-                        if (assetType !== 'video') { setStep(3); return; }
-                        // Read audio duration from blob — previewAudioRef not mounted yet
-                        let aDur = 0;
-                        try {
-                          const blob = audioTakes[selectedTakeIdx]?.blob;
-                          if (blob) {
-                            const ac = new (window.AudioContext || window.webkitAudioContext)();
-                            const buf = await ac.decodeAudioData(await blob.arrayBuffer());
-                            aDur = buf.duration;
-                            ac.close();
-                          }
-                        } catch (_) {}
-                        setPreviewDuration(aDur);
-                        // Read video duration via temp element if step 3 video not mounted yet
-                        let vDur = videoDuration;
-                        if (!vDur && image) {
-                          try {
-                            vDur = await new Promise((resolve) => {
-                              const v = document.createElement('video');
-                              v.src = image;
-                              v.onloadedmetadata = () => resolve(v.duration);
-                              v.onerror = () => resolve(0);
-                              setTimeout(() => resolve(0), 3000);
-                            });
-                            setVideoDuration(vDur);
-                          } catch (_) {}
-                        }
-                        setShowMixPopup(true);
-                      }} className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg ${t.accent} active:scale-95`}><Video className="w-4 h-4" /> Finalize Your Ad →</button>
                     </div>
                   )}
 
@@ -1102,8 +1072,20 @@ const App = () => {
             </div>
           )}
 
+          {step === 3 && createPortal(
+            <div className="fixed bottom-0 left-0 right-0 z-[9999] px-4 pb-8 pt-16 pointer-events-none" style={{ background: 'linear-gradient(to top, rgba(2,6,23,0.97) 0%, rgba(2,6,23,0.85) 50%, transparent 100%)' }}>
+              <div className="max-w-6xl mx-auto flex justify-between items-center pointer-events-auto">
+                <button onClick={() => setStep(2)} className="text-slate-400 font-black text-[10px] uppercase px-4 py-3">Back</button>
+                <button disabled={isCreatingVideo} onClick={createVideo} className={`px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-2 shadow-2xl transition-all ${isCreatingVideo ? 'bg-slate-700 text-slate-400' : t.accent}`}>
+                  {isCreatingVideo ? <><RefreshCw className="w-4 h-4 animate-spin" /> Building...</> : <>Download Your Vocal Ad <span className="text-[9px] font-black bg-white/10 px-2 py-0.5 rounded-full">1 CREDIT</span></>}
+                </button>
+              </div>
+            </div>,
+            document.body
+          )}
+
           {step === 3 && (
-            <div className="py-4 md:py-6 space-y-8 animate-in fade-in max-w-5xl mx-auto">
+            <div className="py-4 md:py-6 space-y-8 animate-in fade-in max-w-5xl mx-auto pb-24">
               {/* Step indicator */}
               <div className="flex items-center justify-center gap-0 pt-2">
                 {[{n:1,label:'Style'},{n:2,label:'Voice'},{n:3,label:'Mix'}].map(({n,label},i) => (
@@ -1168,18 +1150,12 @@ const App = () => {
                       </div>
                       );
                     })()}
-                    <div className="space-y-4">
-                      <button disabled={isCreatingVideo} onClick={createVideo} className={`w-full py-5 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isCreatingVideo ? 'bg-slate-700' : t.accent}`}>
-                        {isCreatingVideo ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
-                        {isCreatingVideo ? "Building your ad..." : <span className="flex items-center gap-3">Download Your Vocal Ad <span className="text-[9px] font-black bg-white/10 px-2 py-1 rounded-full">1 CREDIT</span></span>}
-                      </button>
-                      {isCreatingVideo && (
-                         <div className="space-y-2 px-2 animate-in fade-in">
-                            <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-indigo-400"><span>Synthesis</span><span>{masteringProgress}%</span></div>
-                            <div className="h-1 bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-indigo-600 transition-all duration-300" style={{ width: `${masteringProgress}%` }} /></div>
-                         </div>
-                      )}
-                    </div>
+                    {isCreatingVideo && (
+                      <div className="space-y-2 px-1 animate-in fade-in">
+                        <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-indigo-400"><span>Synthesis</span><span>{masteringProgress}%</span></div>
+                        <div className="h-1 bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-indigo-600 transition-all duration-300" style={{ width: `${masteringProgress}%` }} /></div>
+                      </div>
+                    )}
                   </div>
                   <button onClick={() => setStep(2)} className={`w-full text-center ${t.textBody} font-black text-[10px] uppercase hover:text-indigo-500`}>Adjust script or voice</button>
                 </div>
