@@ -95,14 +95,14 @@ const LANGUAGES_LIST = [
 ];
 
 const VOICES = [
-  { name: 'Aoede', label: 'Aoede (Female)', premium: false },
-  { name: 'Charon', label: 'Charon (Male)', premium: false },
-  { name: 'Fenrir', label: 'Fenrir (Authority)', premium: true },
-  { name: 'Kore', label: 'Kore (Versatile)', premium: true },
-  { name: 'Leda', label: 'Leda (Professional)', premium: true },
-  { name: 'Despina', label: 'Despina (Warm)', premium: true },
-  { name: 'Puck', label: 'Puck (Upbeat)', premium: true },
-  { name: 'Sadachbia', label: 'Sadachbia (Authority)', premium: true },
+  { name: 'Aoede', label: 'Warm Storyteller', gender: 'female', premium: false },
+  { name: 'Charon', label: 'Deep & Bold', gender: 'male', premium: false },
+  { name: 'Fenrir', label: 'Strong Authority', gender: 'male', premium: true },
+  { name: 'Kore', label: 'Versatile Pro', gender: 'female', premium: true },
+  { name: 'Leda', label: 'Clear & Crisp', gender: 'female', premium: true },
+  { name: 'Despina', label: 'Conversational', gender: 'female', premium: true },
+  { name: 'Puck', label: 'Upbeat Energy', gender: 'male', premium: true },
+  { name: 'Sadachbia', label: 'Calm Authority', gender: 'male', premium: true },
 ];
 
 const TONES = [
@@ -729,7 +729,7 @@ const App = () => {
                       {user?.isAnonymous ? (
                         <button onClick={() => { setAuthMode('login'); setShowAuthModal(true); setShowProfileDropdown(false); }} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all text-[11px] font-black text-white ${t.accent}`}><User className="w-4 h-4" /> Link Account</button>
                       ) : (
-                        <button onClick={handleSignOut} className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-red-500/10 text-[11px] font-bold text-red-400"><LogOut className="w-4 h-4" /> Terminate Session</button>
+                        <button onClick={handleSignOut} className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-red-500/10 text-[11px] font-bold text-red-400"><LogOut className="w-4 h-4" /> Sign Out</button>
                       )}
                    </div>
                 </div>
@@ -778,7 +778,7 @@ const App = () => {
               </div>
               <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-4">
                  <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] uppercase`}>Back</button>
-                 <button onClick={() => setStep(2)} className={`px-10 py-4 rounded-xl font-black text-sm flex items-center gap-2 shadow-xl ${t.accent}`}>AI Talent <ChevronRight className="w-4 h-4" /></button>
+                 <button onClick={() => setStep(2)} className={`px-10 py-4 rounded-xl font-black text-sm flex items-center gap-2 shadow-xl ${t.accent}`}>Voice Studio <ChevronRight className="w-4 h-4" /></button>
               </div>
             </div>
           )}
@@ -789,7 +789,7 @@ const App = () => {
                   <div className="space-y-3">
                      <div className="flex items-center justify-between px-1">
                         <label className={`font-black text-[10px] uppercase tracking-widest ${t.textBody}`}>Script Master</label>
-                        <button onClick={() => { setMagicPrompt(text || ""); setShowMagicWand(true); }} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Magic Wand</button>
+                        <button onClick={() => { setMagicPrompt(text || ""); setShowMagicWand(true); }} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Write with AI</button>
                      </div>
                      <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type ad text here..." />
                      <div className="flex justify-between px-2 pt-1">
@@ -810,10 +810,10 @@ const App = () => {
                        </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">AI Talent</label>
+                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Voice Style</label>
                        <div className="relative">
                          <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
-                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.label} {v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
+                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.gender === 'female' ? '♀' : '♂'} {v.label}{v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
                          </select>
                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
                        </div>
@@ -854,7 +854,6 @@ const App = () => {
                     <div className="space-y-3 animate-in slide-in-from-top-4">
                       <div className="flex items-center justify-between px-1">
                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Your Takes</p>
-                        <button onClick={() => setStep(3)} className={`px-6 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 shadow-lg ${t.accent} active:scale-95`}><Video className="w-4 h-4" /> Go to Mastering Studio</button>
                       </div>
                       {audioTakes.map((take, idx) => (
                         <div key={idx} className={`p-4 md:p-5 rounded-2xl border-2 transition-all ${idx === selectedTakeIdx ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-white/5 bg-slate-900/50'}`}>
@@ -870,6 +869,7 @@ const App = () => {
                           <audio controls src={take.url} controlsList="nodownload noplaybackrate" className="w-full h-8 invert opacity-80" />
                         </div>
                       ))}
+                      <button onClick={() => setStep(3)} className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg ${t.accent} active:scale-95`}><Video className="w-4 h-4" /> Finalize Your Ad →</button>
                     </div>
                   )}
 
@@ -896,7 +896,7 @@ const App = () => {
                    <audio ref={previewAudioRef} src={audioTakes[selectedTakeIdx]?.url} onEnded={() => setIsPreviewPlaying(false)} className="hidden" />
                 </div>
                 <div className="space-y-6 md:space-y-8 w-full text-left p-2">
-                  <div className="space-y-2"><h2 className={`text-3xl md:text-4xl font-black tracking-tighter ${t.textHead}`}>Mixing Studio</h2><p className={`text-[13px] md:text-sm ${t.textBody}`}>Finalize your high-fidelity production for export.</p></div>
+                  <div className="space-y-2"><h2 className={`text-3xl md:text-4xl font-black tracking-tighter ${t.textHead}`}>Final Mix</h2><p className={`text-[13px] md:text-sm ${t.textBody}`}>Preview your ad and download when ready.</p></div>
                   <div className="bg-black/40 border border-white/5 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] space-y-6 shadow-inner">
                     {assetType === 'video' && (() => {
                       const ratio = previewDuration && videoDuration ? previewDuration / videoDuration : null;
@@ -904,20 +904,20 @@ const App = () => {
                       const vSec = videoDuration ? Math.round(videoDuration) : 0;
                       const aSec = previewDuration ? Math.round(previewDuration) : 0;
                       const recommendationMessage = ratio === null ? null
-                        : ratio < 0.5 ? `Your video (${vSec}s) is much longer than your voice (${aSec}s) — AI Director picks your best moment and fits it perfectly`
-                        : ratio > 1.5 ? `Your voice (${aSec}s) is longer than your video (${vSec}s) — Loop replays it smoothly until the end`
-                        : `Lengths are close — Freeze plays your video once and holds the last frame cleanly`;
+                        : ratio < 0.5 ? `Your video (${vSec}s) is much longer than your voice (${aSec}s) — Auto Fit speeds it to match your voiceover perfectly`
+                        : ratio > 1.5 ? `Your voice (${aSec}s) is longer than your video (${vSec}s) — Loop Video replays it smoothly until the end`
+                        : `Lengths are close — Freeze Frame plays your video once and holds the last shot cleanly`;
                       const modeDescriptions = {
-                        loop: "Video replays from start until your audio ends",
-                        freeze: "Video plays once then holds the last frame",
-                        ai_director: "AI paces video speed to match your audio · pick your start scene below"
+                        loop: "Video replays from the start until your voiceover ends",
+                        freeze: "Video plays once then holds on the last frame",
+                        ai_director: "AI auto-adjusts video speed to match your voiceover · pick your start scene below"
                       };
                       return (
                       <div className="space-y-3">
-                        <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody}`}>Video Mode</label>
+                        <label className={`text-[9px] font-black uppercase tracking-widest ${t.textBody}`}>Mixing Style</label>
                         {recommendationMessage && <p className="text-[9px] text-emerald-400/80 font-black px-1 leading-relaxed">{recommendationMessage}</p>}
                         <div className={`flex gap-1.5 bg-black/40 p-1.5 rounded-xl border border-white/5`}>
-                          {[{id:'loop',label:'Loop'},{id:'freeze',label:'Freeze'},{id:'ai_director',label:'AI Director ✦'}].map(m => (
+                          {[{id:'loop',label:'Loop Video'},{id:'freeze',label:'Freeze Frame'},{id:'ai_director',label:'Auto Fit ✦'}].map(m => (
                             <button key={m.id} onClick={() => setVideoMode(m.id)} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all relative ${videoMode === m.id ? 'bg-indigo-600 text-white shadow-lg' : recommendedMode === m.id ? 'text-emerald-400 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300'}`}>
                               {m.label}
                             </button>
@@ -940,7 +940,7 @@ const App = () => {
                     <div className="space-y-4">
                       <button disabled={isCreatingVideo} onClick={createVideo} className={`w-full py-5 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isCreatingVideo ? 'bg-slate-700' : t.accent}`}>
                         {isCreatingVideo ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
-                        {isCreatingVideo ? "Mastering Production..." : <span className="flex items-center gap-3">Export High-Fidelity Ad <span className="text-[9px] font-black bg-white/10 px-2 py-1 rounded-full">1 CREDIT</span></span>}
+                        {isCreatingVideo ? "Building your ad..." : <span className="flex items-center gap-3">Download Your Vocal Ad <span className="text-[9px] font-black bg-white/10 px-2 py-1 rounded-full">1 CREDIT</span></span>}
                       </button>
                       {isCreatingVideo && (
                          <div className="space-y-2 px-2 animate-in fade-in">
@@ -950,7 +950,7 @@ const App = () => {
                       )}
                     </div>
                   </div>
-                  <button onClick={() => setStep(2)} className={`w-full text-center ${t.textBody} font-black text-[10px] uppercase hover:text-indigo-500`}>Adjust script or talent</button>
+                  <button onClick={() => setStep(2)} className={`w-full text-center ${t.textBody} font-black text-[10px] uppercase hover:text-indigo-500`}>Adjust script or voice</button>
                 </div>
               </div>
             </div>
@@ -983,7 +983,7 @@ const App = () => {
           <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full space-y-6 shadow-2xl relative">
             <button onClick={() => setShowMagicWand(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X className="w-6 h-6" /></button>
             <div className="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mb-2"><Wand2 className="w-8 h-8" /></div>
-            <h3 className="text-3xl font-black text-white tracking-tight">Magic Architect</h3>
+            <h3 className="text-3xl font-black text-white tracking-tight">Write with AI</h3>
             <p className="text-slate-400 text-sm">Target Language: <span className="text-indigo-400 font-bold">{selectedLanguage.label}</span></p>
             <textarea className="w-full p-6 bg-slate-800 border-2 border-slate-700 rounded-2xl outline-none text-white focus:border-indigo-500 h-32" placeholder="e.g. A shoe brand summer sale, 15 second TV spot..." value={magicPrompt} onChange={e => setMagicPrompt(e.target.value)} />
             {authError && <p className="text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{authError}</p>}
