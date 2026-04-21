@@ -841,8 +841,8 @@ const App = () => {
                   <button onClick={() => { setFitMode('cover'); setImgTransform({ x: 0, y: 0, scale: 1, rotate: 0 }); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'cover' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fill Screen</button>
                   <button onClick={() => { setFitMode('contain'); setImgTransform({ x: 0, y: 0, scale: 1, rotate: 0 }); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'contain' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fit Entire</button>
               </div>
-              <div className="flex items-center justify-center gap-3">
-                <div className="relative bg-black rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl border-4 md:border-8 border-slate-800 shrink-0" style={{ width: '200px', aspectRatio: '9/16' }}>
+              <div className="flex flex-col items-center gap-3 mx-auto">
+                <div className="relative bg-black rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl border-4 md:border-8 border-slate-800 w-[240px] md:w-[300px]" style={{ aspectRatio: '9/16', touchAction: 'none' }}>
                   {assetType === 'image'
                     ? <img src={image} draggable={false}
                         className="w-full h-full select-none cursor-grab active:cursor-grabbing"
@@ -887,11 +887,11 @@ const App = () => {
                         }}
                         onPointerCancel={(e) => { activePointersRef.current.delete(e.pointerId); panStartRef.current = null; pinchStartRef.current = null; }}
                         alt="Preview" />
-                    : <video src={image} muted autoPlay loop style={{ width:'100%', height:'100%', objectFit: fitMode==='cover'?'cover':'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css }} />}
+                    : <video src={image} muted autoPlay loop style={{ width:'100%', height:'100%', objectFit: fitMode==='cover'?'cover':'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css, touchAction: 'none' }} />}
                 </div>
-                <div className="flex flex-col gap-1.5 shrink-0">
+                <div className="flex flex-row gap-2 overflow-x-auto pb-1 w-[240px] md:w-[300px] hide-scrollbar">
                   {FILTERS.map(f => (
-                    <button key={f.id} onClick={() => setSelectedFilter(f.id)} className={`w-12 h-12 rounded-xl border-2 overflow-hidden transition-all relative ${selectedFilter === f.id ? 'border-indigo-500 shadow-lg shadow-indigo-500/30' : 'border-white/10 hover:border-white/30'}`} title={f.label}>
+                    <button key={f.id} onClick={() => setSelectedFilter(f.id)} className={`w-12 h-12 rounded-xl border-2 overflow-hidden transition-all relative shrink-0 ${selectedFilter === f.id ? 'border-indigo-500 shadow-lg shadow-indigo-500/30' : 'border-white/10 hover:border-white/30'}`} title={f.label}>
                       <img src={assetType === 'video' ? (videoThumbnail || image) : image} draggable={false} className="w-full h-full object-cover" style={{ filter: f.css }} alt={f.label} />
                       <span className="absolute bottom-0 left-0 right-0 text-[6px] font-black text-center bg-black/60 py-0.5 text-white leading-tight">{f.label}</span>
                     </button>
