@@ -199,6 +199,10 @@ const App = () => {
   const [previewSampleUrl, setPreviewSampleUrl] = useState(null);
   const [showVoiceTest, setShowVoiceTest] = useState(false);
   const previewCacheRef = useRef({});
+  const [showMixPopup, setShowMixPopup] = useState(false);
+  const [imagePan, setImagePan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -552,6 +556,8 @@ const App = () => {
         if (assetRatio > canvasRatio) { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
         else { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
       }
+      // Apply user pan offset for images
+      if (assetType === 'image') { ox += imagePan.x * (dw - canvas.width); oy += imagePan.y * (dh - canvas.height); }
       const stream = canvas.captureStream(30);
       const audioStream = audioContext.createMediaStreamDestination();
       const voiceSource = audioContext.createBufferSource(); voiceSource.buffer = voiceBuffer; voiceSource.connect(audioStream);
@@ -749,10 +755,12 @@ const App = () => {
                      <button onClick={() => document.getElementById('imageInput').click()} className={`w-full sm:w-auto px-10 py-5 md:px-14 md:py-7 text-white rounded-[1.5rem] md:rounded-[2rem] font-black text-base md:text-xl shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-4 group ${t.accent}`}><Upload className="w-6 h-6 group-hover:animate-bounce" /> Add Your Media Asset</button>
                   </div>
                </div>
-               <input id="imageInput" type="file" className="hidden" accept="image/*,video/*" onChange={(e) => {
+               <input id="imageInput" type="file" className="hidden" accept="image/*,video/*,.gif" onChange={(e) => {
                 const file = e.target.files[0]; if (!file) return;
                 if (file.size > 50 * 1024 * 1024) { setError("File too large. Please use a file under 50MB."); return; }
-                setAssetType(file.type.startsWith('video') ? 'video' : 'image');
+                const isVideo = file.type.startsWith('video') && file.type !== 'image/gif';
+                setAssetType(isVideo ? 'video' : 'image');
+                setImagePan({ x: 0, y: 0 });
                 const reader = new FileReader(); reader.onload = (ev) => { setImage(ev.target.result); setStep(1); }; reader.readAsDataURL(file);
               }} />
             </div>
@@ -774,8 +782,13 @@ const App = () => {
                   <button onClick={() => setFitMode('contain')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'contain' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fit Entire</button>
               </div>
               <div className="relative mx-auto bg-black rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl border-4 md:border-8 border-slate-800" style={{ width: '220px', aspectRatio: selectedRatio.ratio }}>
-                {assetType === 'image' ? <img src={image} className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} alt="Preview" /> : <video src={image} muted autoPlay loop className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} />}
+                {assetType === 'image'
+                  ? <img src={image} className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} style={{ objectPosition: `${50 + imagePan.x * 50}% ${50 + imagePan.y * 50}%` }} alt="Preview" />
+                  : <video src={image} muted autoPlay loop className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} />}
               </div>
+              {assetType === 'image' && fitMode === 'cover' && (
+                <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-2">Drag preview to reframe</p>
+              )}
               <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-4">
                  <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] uppercase`}>Back</button>
                  <button onClick={() => setStep(2)} className={`px-10 py-4 rounded-xl font-black text-sm flex items-center gap-2 shadow-xl ${t.accent}`}>Voice Studio <ChevronRight className="w-4 h-4" /></button>
@@ -813,7 +826,7 @@ const App = () => {
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Voice Style</label>
                        <div className="relative">
                          <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
-                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.gender === 'female' ? '♀' : '♂'} {v.label}{v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
+                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.label} ({v.gender === 'female' ? 'Female' : 'Male'}){v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
                          </select>
                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
                        </div>
@@ -856,20 +869,20 @@ const App = () => {
                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Your Takes</p>
                       </div>
                       {audioTakes.map((take, idx) => (
-                        <div key={idx} className={`p-4 md:p-5 rounded-2xl border-2 transition-all ${idx === selectedTakeIdx ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-white/5 bg-slate-900/50'}`}>
-                          <div className="flex items-center justify-between gap-3 mb-3">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-                              Take {audioTakes.length - idx}{idx === 0 ? ' — Latest' : ''}
+                        <div key={idx} onClick={() => setSelectedTakeIdx(idx)} className={`p-4 md:p-5 rounded-2xl border-2 transition-all cursor-pointer ${idx === selectedTakeIdx ? 'border-indigo-500/70 bg-indigo-500/8' : 'border-white/5 bg-slate-900/50 hover:border-white/15'}`}>
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${idx === selectedTakeIdx ? 'border-indigo-500 bg-indigo-500' : 'border-slate-600'}`}>
+                              {idx === selectedTakeIdx && <div className="w-2 h-2 rounded-full bg-white" />}
+                            </div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex-1">
+                              Take {audioTakes.length - idx}{idx === 0 ? ' · Latest' : ''}
                             </p>
-                            {idx === selectedTakeIdx
-                              ? <span className="text-[9px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-1 rounded-full">Selected for Export</span>
-                              : <button onClick={() => setSelectedTakeIdx(idx)} className="text-[9px] font-black text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-2 py-1 rounded-full transition-all">Use This Take</button>
-                            }
+                            {idx === selectedTakeIdx && <span className="text-[8px] font-black text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">Selected</span>}
                           </div>
-                          <audio controls src={take.url} controlsList="nodownload noplaybackrate" className="w-full h-8 invert opacity-80" />
+                          <audio controls src={take.url} controlsList="nodownload noplaybackrate" className="w-full h-8 invert opacity-80" onClick={e => e.stopPropagation()} />
                         </div>
                       ))}
-                      <button onClick={() => setStep(3)} className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg ${t.accent} active:scale-95`}><Video className="w-4 h-4" /> Finalize Your Ad →</button>
+                      <button onClick={() => setShowMixPopup(true)} className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg ${t.accent} active:scale-95`}><Video className="w-4 h-4" /> Finalize Your Ad →</button>
                     </div>
                   )}
 
@@ -882,7 +895,17 @@ const App = () => {
             <div className="py-4 md:py-6 space-y-10 animate-in fade-in max-w-5xl mx-auto">
               <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
                 <div className="relative group mx-auto bg-black rounded-[2.5rem] md:rounded-[3.5rem] overflow-hidden shadow-2xl border-[8px] md:border-[12px] border-slate-800 w-[240px] md:w-[280px]" style={{ aspectRatio: selectedRatio.ratio }}>
-                   {assetType === 'image' ? <img src={image} className="w-full h-full object-cover" alt="Mix" /> : <video ref={previewVideoRef} src={image} muted className="w-full h-full object-cover" onLoadedMetadata={(e) => setVideoDuration(e.target.duration)} />}
+                   {assetType === 'image'
+                     ? <img src={image} className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} ${fitMode === 'cover' ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                         style={{ objectPosition: `${50 + imagePan.x * 50}% ${50 + imagePan.y * 50}%`, userSelect: 'none' }}
+                         onMouseDown={fitMode === 'cover' ? (e) => { setIsPanning(true); panStartRef.current = { mx: e.clientX, my: e.clientY, px: imagePan.x, py: imagePan.y }; } : undefined}
+                         onMouseMove={fitMode === 'cover' ? (e) => { if (!isPanning || !panStartRef.current) return; const dx = (e.clientX - panStartRef.current.mx) / 120; const dy = (e.clientY - panStartRef.current.my) / 120; setImagePan({ x: Math.max(-1, Math.min(1, panStartRef.current.px - dx)), y: Math.max(-1, Math.min(1, panStartRef.current.py - dy)) }); } : undefined}
+                         onMouseUp={() => setIsPanning(false)} onMouseLeave={() => setIsPanning(false)}
+                         onTouchStart={fitMode === 'cover' ? (e) => { setIsPanning(true); panStartRef.current = { mx: e.touches[0].clientX, my: e.touches[0].clientY, px: imagePan.x, py: imagePan.y }; } : undefined}
+                         onTouchMove={fitMode === 'cover' ? (e) => { if (!isPanning || !panStartRef.current) return; const dx = (e.touches[0].clientX - panStartRef.current.mx) / 120; const dy = (e.touches[0].clientY - panStartRef.current.my) / 120; setImagePan({ x: Math.max(-1, Math.min(1, panStartRef.current.px - dx)), y: Math.max(-1, Math.min(1, panStartRef.current.py - dy)) }); } : undefined}
+                         onTouchEnd={() => setIsPanning(false)}
+                         draggable={false} alt="Mix" />
+                     : <video ref={previewVideoRef} src={image} muted className="w-full h-full object-cover" onLoadedMetadata={(e) => setVideoDuration(e.target.duration)} />}
                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-6 md:p-8 opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex items-center justify-between gap-4">
                          <button onClick={() => setIsPreviewPlaying(!isPreviewPlaying)} className="w-12 h-12 md:w-14 md:h-14 bg-indigo-600 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all">{isPreviewPlaying ? <Pause className="w-5 h-5 md:w-6 md:h-6 fill-white" /> : <Play className="w-5 h-5 md:w-6 md:h-6 fill-white ml-0.5 md:ml-1" />}</button>
@@ -924,16 +947,6 @@ const App = () => {
                           ))}
                         </div>
                         <p className="text-[9px] text-slate-500 font-black px-1 animate-in fade-in">{modeDescriptions[videoMode]}</p>
-                        {videoMode === 'ai_director' && videoDuration > 0 && (
-                          <div className="space-y-2 px-1 pt-1 animate-in fade-in">
-                            <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-slate-500">
-                              <span>Scene Start</span>
-                              <span>{videoStartOffset.toFixed(1)}s</span>
-                            </div>
-                            <input type="range" min="0" max={Math.max(0, videoDuration - 1)} step="0.5" value={videoStartOffset} onChange={(e) => setVideoStartOffset(parseFloat(e.target.value))} className="w-full accent-indigo-500 cursor-pointer" />
-                            <p className="text-[8px] text-slate-600 font-black uppercase tracking-widest">AI will auto-pace video speed · fades to black at end</p>
-                          </div>
-                        )}
                       </div>
                       );
                     })()}
@@ -1002,6 +1015,46 @@ const App = () => {
           </div>
         </div>
       )}
+
+      {showMixPopup && (() => {
+        const vSec = videoDuration ? Math.round(videoDuration) : 0;
+        const aSec = previewDuration ? Math.round(previewDuration) : 0;
+        const ratio = previewDuration && videoDuration ? previewDuration / videoDuration : null;
+        const isBadFit = ratio !== null && (ratio < 0.1 || ratio > 10);
+        const isGoodFit = ratio !== null && ratio >= 0.5 && ratio <= 1.5;
+        const recommendedMode = ratio === null ? 'loop' : ratio < 0.5 ? 'ai_director' : ratio > 1.5 ? 'loop' : 'freeze';
+        const { title, body, color } = isBadFit
+          ? { title: "Poor match", body: `Your voice (${aSec}s) and video (${vSec}s) are very different lengths. All mixing styles will produce a short ad. For best results, record a longer voiceover or use a shorter video clip.`, color: 'amber' }
+          : isGoodFit
+          ? { title: "Great match!", body: `Your voice (${aSec}s) and video (${vSec}s) are well matched. We've selected Freeze Frame — your video plays once cleanly.`, color: 'emerald' }
+          : ratio < 0.5
+          ? { title: "Auto Fit recommended", body: `Your video (${vSec}s) is longer than your voice (${aSec}s). Auto Fit will speed-match the video to your voiceover.`, color: 'indigo' }
+          : { title: "Loop Video recommended", body: `Your voice (${aSec}s) is longer than your video (${vSec}s). Loop Video will replay your clip smoothly until the voiceover ends.`, color: 'indigo' };
+        const colorMap = { emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', amber: 'text-amber-400 bg-amber-500/10 border-amber-500/20', indigo: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' };
+        return (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl">
+            <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 max-w-sm w-full space-y-5 shadow-2xl">
+              <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${colorMap[color]}`}>
+                {isBadFit ? <AlertCircle className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />} {title}
+              </div>
+              <p className="text-white font-black text-lg leading-snug tracking-tight">Your final ad will be <span className="text-indigo-400">{aSec > 0 ? `${aSec}s` : '—'}</span></p>
+              <p className="text-slate-400 text-sm leading-relaxed">{body}</p>
+              <div className="flex flex-col gap-3 pt-1">
+                {isBadFit ? (
+                  <>
+                    <button onClick={() => { setShowMixPopup(false); }} className="w-full py-3 bg-slate-700 text-white rounded-2xl font-black text-sm">Go Back & Adjust</button>
+                    <button onClick={() => { setVideoMode(recommendedMode); setShowMixPopup(false); setStep(3); }} className="w-full py-3 border border-white/10 text-slate-400 rounded-2xl font-black text-sm">Continue Anyway</button>
+                  </>
+                ) : (
+                  <button onClick={() => { setVideoMode(recommendedMode); setShowMixPopup(false); setStep(3); }} className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 ${t.accent}`}>
+                    Looks Good — Let's Go →
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
