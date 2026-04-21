@@ -218,6 +218,7 @@ const App = () => {
   const [videoThumbnail, setVideoThumbnail] = useState(null);
   const panStartRef = useRef(null);
   const pinchStartRef = useRef(null);
+  const activePointersRef = useRef(new Map());
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -845,13 +846,46 @@ const App = () => {
                   {assetType === 'image'
                     ? <img src={image} draggable={false}
                         className="w-full h-full select-none cursor-grab active:cursor-grabbing"
-                        style={{ objectFit: fitMode === 'cover' ? 'cover' : 'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css, transform: `translate(${imgTransform.x}px,${imgTransform.y}px) scale(${imgTransform.scale}) rotate(${imgTransform.rotate}deg)`, transformOrigin: 'center', touchAction: 'none', transition: panStartRef.current ? 'none' : 'transform 0.1s' }}
-                        onPointerDown={(e) => { const cr = e.currentTarget.parentElement.getBoundingClientRect(); e.currentTarget.setPointerCapture(e.pointerId); panStartRef.current = { mx: e.clientX, my: e.clientY, tx: imgTransform.x, ty: imgTransform.y, scale: imgTransform.scale, cw: cr.width, ch: cr.height }; }}
-                        onPointerMove={(e) => { const ps = panStartRef.current; if (!ps) return; const dx = e.clientX - ps.mx; const dy = e.clientY - ps.my; const maxX = Math.max(0, ps.cw * (ps.scale - 1) / 2); const maxY = Math.max(0, ps.ch * (ps.scale - 1) / 2); setImgTransform(prev => ({ ...prev, x: Math.max(-maxX, Math.min(maxX, ps.tx + dx)), y: Math.max(-maxY, Math.min(maxY, ps.ty + dy)) })); }}
-                        onPointerUp={() => { panStartRef.current = null; }}
-                        onTouchStart={(e) => { if (e.touches.length === 2) { const tdx = e.touches[1].clientX - e.touches[0].clientX; const tdy = e.touches[1].clientY - e.touches[0].clientY; const cr = e.currentTarget.parentElement.getBoundingClientRect(); pinchStartRef.current = { dist: Math.hypot(tdx, tdy), scale: imgTransform.scale, angle: Math.atan2(tdy, tdx), rotate: imgTransform.rotate, cw: cr.width, ch: cr.height }; } }}
-                        onTouchMove={(e) => { if (e.touches.length === 2 && pinchStartRef.current) { e.preventDefault(); const tdx = e.touches[1].clientX - e.touches[0].clientX; const tdy = e.touches[1].clientY - e.touches[0].clientY; const dist = Math.hypot(tdx, tdy); const newScale = Math.max(1, Math.min(4, pinchStartRef.current.scale * (dist / pinchStartRef.current.dist))); const maxX = Math.max(0, pinchStartRef.current.cw * (newScale - 1) / 2); const maxY = Math.max(0, pinchStartRef.current.ch * (newScale - 1) / 2); const angleDelta = (Math.atan2(tdy, tdx) - pinchStartRef.current.angle) * (180 / Math.PI); setImgTransform(prev => ({ ...prev, scale: newScale, x: Math.max(-maxX, Math.min(maxX, prev.x)), y: Math.max(-maxY, Math.min(maxY, prev.y)), rotate: pinchStartRef.current.rotate + angleDelta })); } }}
-                        onTouchEnd={() => { pinchStartRef.current = null; }}
+                        style={{ objectFit: fitMode === 'cover' ? 'cover' : 'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css, transform: `translate(${imgTransform.x}px,${imgTransform.y}px) scale(${imgTransform.scale}) rotate(${imgTransform.rotate}deg)`, transformOrigin: 'center', touchAction: 'none', transition: panStartRef.current || pinchStartRef.current ? 'none' : 'transform 0.1s' }}
+                        onPointerDown={(e) => {
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                          const ptrs = [...activePointersRef.current.values()];
+                          const cr = e.currentTarget.parentElement.getBoundingClientRect();
+                          if (ptrs.length === 1) {
+                            panStartRef.current = { mx: e.clientX, my: e.clientY, tx: imgTransform.x, ty: imgTransform.y, scale: imgTransform.scale, cw: cr.width, ch: cr.height };
+                            pinchStartRef.current = null;
+                          } else if (ptrs.length === 2) {
+                            panStartRef.current = null;
+                            const dx = ptrs[1].x - ptrs[0].x; const dy = ptrs[1].y - ptrs[0].y;
+                            pinchStartRef.current = { dist: Math.hypot(dx, dy), scale: imgTransform.scale, angle: Math.atan2(dy, dx), rotate: imgTransform.rotate, cw: cr.width, ch: cr.height };
+                          }
+                        }}
+                        onPointerMove={(e) => {
+                          if (!activePointersRef.current.has(e.pointerId)) return;
+                          activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                          const ptrs = [...activePointersRef.current.values()];
+                          if (ptrs.length === 1) {
+                            const ps = panStartRef.current; if (!ps) return;
+                            const dx = e.clientX - ps.mx; const dy = e.clientY - ps.my;
+                            const maxX = Math.max(0, ps.cw * (ps.scale - 1) / 2); const maxY = Math.max(0, ps.ch * (ps.scale - 1) / 2);
+                            setImgTransform(prev => ({ ...prev, x: Math.max(-maxX, Math.min(maxX, ps.tx + dx)), y: Math.max(-maxY, Math.min(maxY, ps.ty + dy)) }));
+                          } else if (ptrs.length === 2) {
+                            const ps = pinchStartRef.current; if (!ps) return;
+                            const dx = ptrs[1].x - ptrs[0].x; const dy = ptrs[1].y - ptrs[0].y;
+                            const dist = Math.hypot(dx, dy);
+                            const newScale = Math.max(1, Math.min(4, ps.scale * (dist / ps.dist)));
+                            const maxX = Math.max(0, ps.cw * (newScale - 1) / 2); const maxY = Math.max(0, ps.ch * (newScale - 1) / 2);
+                            const angleDelta = (Math.atan2(dy, dx) - ps.angle) * (180 / Math.PI);
+                            setImgTransform(prev => ({ ...prev, scale: newScale, rotate: ps.rotate + angleDelta, x: Math.max(-maxX, Math.min(maxX, prev.x)), y: Math.max(-maxY, Math.min(maxY, prev.y)) }));
+                          }
+                        }}
+                        onPointerUp={(e) => {
+                          activePointersRef.current.delete(e.pointerId);
+                          if (activePointersRef.current.size === 0) { panStartRef.current = null; pinchStartRef.current = null; }
+                          else { panStartRef.current = null; pinchStartRef.current = null; }
+                        }}
+                        onPointerCancel={(e) => { activePointersRef.current.delete(e.pointerId); panStartRef.current = null; pinchStartRef.current = null; }}
                         alt="Preview" />
                     : <video src={image} muted autoPlay loop style={{ width:'100%', height:'100%', objectFit: fitMode==='cover'?'cover':'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css }} />}
                 </div>
