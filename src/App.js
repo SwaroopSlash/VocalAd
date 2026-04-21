@@ -217,9 +217,11 @@ const App = () => {
   const [imgTransform, setImgTransform] = useState({ x: 0, y: 0, scale: 1, rotate: 0 });
   const [selectedFilter, setSelectedFilter] = useState('none');
   const [videoThumbnail, setVideoThumbnail] = useState(null);
+  const [imgNaturalSize, setImgNaturalSize] = useState(null);
   const panStartRef = useRef(null);
   const pinchStartRef = useRef(null);
   const activePointersRef = useRef(new Map());
+  const imgContainerRef = useRef(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -312,13 +314,16 @@ const App = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Mobile back button — push a history entry on each step advance, pop = go back
+  // Mobile back button — anchor step 0 in history, then push on each advance
+  useEffect(() => {
+    try { window.history.replaceState({ step: 0 }, ''); } catch (_) {}
+    const handlePop = (e) => setStep(typeof e.state?.step === 'number' ? e.state.step : 0);
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
   useEffect(() => {
     if (step === 0) return;
     try { window.history.pushState({ step }, ''); } catch (_) {}
-    const handlePop = () => setStep(prev => Math.max(0, prev - 1));
-    window.addEventListener('popstate', handlePop);
-    return () => window.removeEventListener('popstate', handlePop);
   }, [step]);
 
   // Video thumbnail — extract first frame for filter swatches
@@ -591,20 +596,14 @@ const App = () => {
       const assetHeight = assetType === 'video' ? assetElement.videoHeight : assetElement.height;
       const assetRatio = assetWidth / assetHeight;
       const canvasRatio = canvas.width / canvas.height;
+      // Always contain as base; imgTransform.scale handles both zoom and fill-screen
       let dw, dh, ox = 0, oy = 0;
-      if (fitMode === 'cover') {
-        if (assetRatio > canvasRatio) { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
-        else { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
-      } else {
-        if (assetRatio > canvasRatio) { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
-        else { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
-      }
-      // Apply transform (pan + zoom) for images
-      if (assetType === 'image') {
-        dw *= imgTransform.scale; dh *= imgTransform.scale;
-        ox = (canvas.width - dw) / 2 + imgTransform.x;
-        oy = (canvas.height - dh) / 2 + imgTransform.y;
-      }
+      if (assetRatio > canvasRatio) { dw = canvas.width; dh = assetHeight * (canvas.width / assetWidth); oy = (canvas.height - dh) / 2; }
+      else { dh = canvas.height; dw = assetWidth * (canvas.height / assetHeight); ox = (canvas.width - dw) / 2; }
+      const fillScale = assetRatio > canvasRatio ? canvas.height * assetRatio / canvas.width : canvas.width / (canvas.height * assetRatio);
+      dw *= imgTransform.scale; dh *= imgTransform.scale;
+      ox = (canvas.width - dw) / 2 + imgTransform.x;
+      oy = (canvas.height - dh) / 2 + imgTransform.y;
       const activeFilter = FILTERS.find(f => f.id === selectedFilter)?.css || 'none';
       const stream = canvas.captureStream(30);
       const audioStream = audioContext.createMediaStreamDestination();
@@ -624,9 +623,9 @@ const App = () => {
         const elapsed = (timestamp - startTime) / 1000;
         setMasteringProgress(Math.min(Math.round((elapsed / duration) * 100), 99));
         ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        if (fitMode !== 'cover') { ctx.save(); ctx.filter = 'blur(60px) brightness(0.4)'; ctx.drawImage(assetElement, -canvas.width, -canvas.height, canvas.width * 3, canvas.height * 3); ctx.restore(); }
+        if (imgTransform.scale < fillScale) { ctx.save(); ctx.filter = 'blur(60px) brightness(0.4)'; ctx.drawImage(assetElement, -canvas.width, -canvas.height, canvas.width * 3, canvas.height * 3); ctx.restore(); }
         ctx.filter = activeFilter;
-        if (assetType === 'image' && imgTransform.rotate) {
+        if (imgTransform.rotate) {
           ctx.save();
           ctx.translate(canvas.width / 2, canvas.height / 2);
           ctx.rotate(imgTransform.rotate * Math.PI / 180);
@@ -830,6 +829,7 @@ const App = () => {
                 setAssetType(isVideo ? 'video' : 'image');
                 setImgTransform({ x: 0, y: 0, scale: 1, rotate: 0 });
                 setSelectedFilter('none');
+                setImgNaturalSize(null);
                 const reader = new FileReader(); reader.onload = (ev) => { setImage(ev.target.result); setStep(1); }; reader.readAsDataURL(file);
               }} />
             </div>
@@ -850,56 +850,62 @@ const App = () => {
                 ))}
               </div>
               <div className="flex justify-center gap-2 bg-black/40 p-1.5 rounded-xl w-fit mx-auto border border-white/5">
-                  <button onClick={() => { setFitMode('cover'); setImgTransform({ x: 0, y: 0, scale: 1, rotate: 0 }); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'cover' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fill Screen</button>
+                  <button onClick={() => {
+                    setFitMode('cover');
+                    const cr = imgContainerRef.current?.getBoundingClientRect();
+                    const ns = imgNaturalSize;
+                    if (cr && ns?.w && ns?.h) {
+                      const ia = ns.w / ns.h; const ca = cr.width / cr.height;
+                      setImgTransform({ x: 0, y: 0, scale: ia > ca ? cr.height * ia / cr.width : cr.width / (cr.height * ia), rotate: 0 });
+                    }
+                  }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'cover' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fill Screen</button>
                   <button onClick={() => { setFitMode('contain'); setImgTransform({ x: 0, y: 0, scale: 1, rotate: 0 }); }} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${fitMode === 'contain' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fit Entire</button>
               </div>
               <div className="flex flex-col items-center gap-3 mx-auto">
-                <div className="relative bg-black rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl border-4 md:border-8 border-slate-800 w-[240px] md:w-[300px]" style={{ aspectRatio: '9/16', touchAction: 'none' }}>
-                  {assetType === 'image'
-                    ? <img src={image} draggable={false}
-                        className="w-full h-full select-none cursor-grab active:cursor-grabbing"
-                        style={{ objectFit: fitMode === 'cover' ? 'cover' : 'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css, transform: `translate(${imgTransform.x}px,${imgTransform.y}px) scale(${imgTransform.scale}) rotate(${imgTransform.rotate}deg)`, transformOrigin: 'center', touchAction: 'none', transition: panStartRef.current || pinchStartRef.current ? 'none' : 'transform 0.1s' }}
-                        onPointerDown={(e) => {
-                          e.currentTarget.setPointerCapture(e.pointerId);
-                          activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-                          const ptrs = [...activePointersRef.current.values()];
-                          const cr = e.currentTarget.parentElement.getBoundingClientRect();
-                          if (ptrs.length === 1) {
-                            panStartRef.current = { mx: e.clientX, my: e.clientY, tx: imgTransform.x, ty: imgTransform.y, scale: imgTransform.scale, cw: cr.width, ch: cr.height };
-                            pinchStartRef.current = null;
-                          } else if (ptrs.length === 2) {
-                            panStartRef.current = null;
-                            const dx = ptrs[1].x - ptrs[0].x; const dy = ptrs[1].y - ptrs[0].y;
-                            pinchStartRef.current = { dist: Math.hypot(dx, dy), scale: imgTransform.scale, angle: Math.atan2(dy, dx), rotate: imgTransform.rotate, cw: cr.width, ch: cr.height };
-                          }
-                        }}
-                        onPointerMove={(e) => {
-                          if (!activePointersRef.current.has(e.pointerId)) return;
-                          activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-                          const ptrs = [...activePointersRef.current.values()];
-                          if (ptrs.length === 1) {
-                            const ps = panStartRef.current; if (!ps) return;
-                            const dx = e.clientX - ps.mx; const dy = e.clientY - ps.my;
-                            const maxX = Math.max(0, ps.cw * (ps.scale - 1) / 2); const maxY = Math.max(0, ps.ch * (ps.scale - 1) / 2);
-                            setImgTransform(prev => ({ ...prev, x: Math.max(-maxX, Math.min(maxX, ps.tx + dx)), y: Math.max(-maxY, Math.min(maxY, ps.ty + dy)) }));
-                          } else if (ptrs.length === 2) {
-                            const ps = pinchStartRef.current; if (!ps) return;
-                            const dx = ptrs[1].x - ptrs[0].x; const dy = ptrs[1].y - ptrs[0].y;
-                            const dist = Math.hypot(dx, dy);
-                            const newScale = Math.max(1, Math.min(4, ps.scale * (dist / ps.dist)));
-                            const maxX = Math.max(0, ps.cw * (newScale - 1) / 2); const maxY = Math.max(0, ps.ch * (newScale - 1) / 2);
-                            const angleDelta = (Math.atan2(dy, dx) - ps.angle) * (180 / Math.PI);
-                            setImgTransform(prev => ({ ...prev, scale: newScale, rotate: ps.rotate + angleDelta, x: Math.max(-maxX, Math.min(maxX, prev.x)), y: Math.max(-maxY, Math.min(maxY, prev.y)) }));
-                          }
-                        }}
-                        onPointerUp={(e) => {
-                          activePointersRef.current.delete(e.pointerId);
-                          if (activePointersRef.current.size === 0) { panStartRef.current = null; pinchStartRef.current = null; }
-                          else { panStartRef.current = null; pinchStartRef.current = null; }
-                        }}
-                        onPointerCancel={(e) => { activePointersRef.current.delete(e.pointerId); panStartRef.current = null; pinchStartRef.current = null; }}
-                        alt="Preview" />
-                    : <video src={image} muted autoPlay loop style={{ width:'100%', height:'100%', objectFit: fitMode==='cover'?'cover':'contain', filter: FILTERS.find(f=>f.id===selectedFilter)?.css, touchAction: 'none' }} />}
+                <div ref={imgContainerRef} className="relative bg-black rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl border-4 md:border-8 border-slate-800 w-[240px] md:w-[300px]" style={{ aspectRatio: '9/16', touchAction: 'none' }}>
+                  {(() => {
+                    const gs = {
+                      onPointerDown(e) {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                        const ptrs = [...activePointersRef.current.values()];
+                        const cr = e.currentTarget.parentElement.getBoundingClientRect();
+                        if (ptrs.length === 1) { panStartRef.current = { mx: e.clientX, my: e.clientY, tx: imgTransform.x, ty: imgTransform.y, scale: imgTransform.scale, cw: cr.width, ch: cr.height }; pinchStartRef.current = null; }
+                        else if (ptrs.length === 2) { panStartRef.current = null; const dx = ptrs[1].x-ptrs[0].x; const dy = ptrs[1].y-ptrs[0].y; pinchStartRef.current = { dist: Math.hypot(dx,dy), scale: imgTransform.scale, angle: Math.atan2(dy,dx), rotate: imgTransform.rotate, cw: cr.width, ch: cr.height }; }
+                      },
+                      onPointerMove(e) {
+                        if (!activePointersRef.current.has(e.pointerId)) return;
+                        activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                        const ptrs = [...activePointersRef.current.values()];
+                        if (ptrs.length === 1) {
+                          const ps = panStartRef.current; if (!ps) return;
+                          const dx = e.clientX-ps.mx; const dy = e.clientY-ps.my;
+                          const maxX = Math.max(0, ps.cw*(ps.scale-1)/2); const maxY = Math.max(0, ps.ch*(ps.scale-1)/2);
+                          setImgTransform(prev => ({ ...prev, x: Math.max(-maxX,Math.min(maxX,ps.tx+dx)), y: Math.max(-maxY,Math.min(maxY,ps.ty+dy)) }));
+                        } else if (ptrs.length === 2) {
+                          const ps = pinchStartRef.current; if (!ps) return;
+                          const dx = ptrs[1].x-ptrs[0].x; const dy = ptrs[1].y-ptrs[0].y;
+                          const newScale = Math.max(0.3, Math.min(6, ps.scale*(Math.hypot(dx,dy)/ps.dist)));
+                          const maxX = Math.max(0, ps.cw*(newScale-1)/2); const maxY = Math.max(0, ps.ch*(newScale-1)/2);
+                          setImgTransform(prev => ({ ...prev, scale: newScale, rotate: ps.rotate+(Math.atan2(dy,dx)-ps.angle)*(180/Math.PI), x: Math.max(-maxX,Math.min(maxX,prev.x)), y: Math.max(-maxY,Math.min(maxY,prev.y)) }));
+                        }
+                      },
+                      onPointerUp(e) { activePointersRef.current.delete(e.pointerId); panStartRef.current = null; pinchStartRef.current = null; },
+                      onPointerCancel(e) { activePointersRef.current.delete(e.pointerId); panStartRef.current = null; pinchStartRef.current = null; },
+                    };
+                    const transformStyle = { transform: `translate(${imgTransform.x}px,${imgTransform.y}px) scale(${imgTransform.scale}) rotate(${imgTransform.rotate}deg)`, transformOrigin: 'center', touchAction: 'none', transition: panStartRef.current||pinchStartRef.current ? 'none' : 'transform 0.1s' };
+                    const filterStyle = FILTERS.find(f=>f.id===selectedFilter)?.css;
+                    return assetType === 'image'
+                      ? <img src={image} draggable={false} onLoad={(e) => setImgNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
+                          className="w-full h-full select-none cursor-grab active:cursor-grabbing"
+                          style={{ objectFit: 'contain', filter: filterStyle, ...transformStyle }}
+                          alt="Preview" {...gs} />
+                      : <video src={image} muted autoPlay loop
+                          onLoadedMetadata={(e) => setImgNaturalSize({ w: e.target.videoWidth, h: e.target.videoHeight })}
+                          className="w-full h-full select-none cursor-grab active:cursor-grabbing"
+                          style={{ objectFit: 'contain', filter: filterStyle, ...transformStyle }}
+                          {...gs} />;
+                  })()}
                 </div>
                 <div className="flex flex-row gap-2 overflow-x-auto pb-1 w-[240px] md:w-[300px] hide-scrollbar">
                   {FILTERS.map(f => (
