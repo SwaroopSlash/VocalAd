@@ -48,9 +48,11 @@ import {
   LogOut,
   Eye,
   EyeOff,
-  Cpu,
   Headphones,
-  ChevronDown
+  ChevronDown,
+  Megaphone,
+  ImageIcon,
+  Mic2
 } from 'lucide-react';
 
 // --- PRODUCTION FIREBASE CONFIGURATION ---
@@ -201,7 +203,6 @@ const App = () => {
   const previewCacheRef = useRef({});
   const [showMixPopup, setShowMixPopup] = useState(false);
   const [imagePan, setImagePan] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef(null);
   const [isCreatingVideo, setIsCreatingVideo] = useState(false);
   const [masteringProgress, setMasteringProgress] = useState(0);
@@ -709,7 +710,7 @@ const App = () => {
       <div className={`max-w-6xl mx-auto rounded-[1.5rem] md:rounded-[3rem] shadow-2xl overflow-hidden border transition-all duration-700 relative ${t.card}`}>
         <div className={`flex items-center justify-between p-4 md:p-8 border-b backdrop-blur-xl sticky top-0 z-40 transition-all ${t.nav}`}>
            <div className="flex items-center gap-2 md:gap-3">
-              <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg transition-all ${t.accent}`}><Cpu className="w-5 h-5 md:w-6 md:h-6" /></div>
+              <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg transition-all ${t.accent}`}><Megaphone className="w-5 h-5 md:w-6 md:h-6" /></div>
               <h1 className={`text-lg md:text-2xl font-black tracking-tighter transition-all ${t.textHead}`}>VocalAd.ai</h1>
            </div>
            <div className="flex items-center gap-2 md:gap-4 relative" ref={dropdownRef}>
@@ -751,7 +752,16 @@ const App = () => {
                <div className="space-y-8">
                   <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 text-[9px] font-black uppercase tracking-widest mx-auto"><Activity className="w-3 h-3" /> Professional Lab v2.1</div>
                   <h2 className={`text-4xl md:text-8xl font-black tracking-tighter leading-tight ${t.textHead}`}>Create high-impact AI voiceover <span className="text-indigo-500">for your assets.</span></h2>
-                  <div className="flex flex-col items-center pt-8">
+                  <div className="flex items-center justify-center gap-2 md:gap-3 flex-wrap pt-2">
+                    <span className="flex items-center gap-1.5 text-[10px] md:text-[11px] font-black text-slate-500"><ImageIcon className="w-3.5 h-3.5" /> Images</span>
+                    <span className="text-slate-700 text-[10px]">·</span>
+                    <span className="flex items-center gap-1.5 text-[10px] md:text-[11px] font-black text-slate-500"><span className="text-[8px] font-black bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded-md leading-none">GIF</span> GIFs</span>
+                    <span className="text-slate-700 text-[10px]">·</span>
+                    <span className="flex items-center gap-1.5 text-[10px] md:text-[11px] font-black text-slate-500"><Video className="w-3.5 h-3.5" /> Videos</span>
+                    <span className="text-slate-600 text-[10px] font-black px-1">+</span>
+                    <span className="flex items-center gap-1.5 text-[10px] md:text-[11px] font-black text-indigo-400"><Mic2 className="w-3.5 h-3.5" /> AI Voiceover</span>
+                  </div>
+                  <div className="flex flex-col items-center pt-6">
                      <button onClick={() => document.getElementById('imageInput').click()} className={`w-full sm:w-auto px-10 py-5 md:px-14 md:py-7 text-white rounded-[1.5rem] md:rounded-[2rem] font-black text-base md:text-xl shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-4 group ${t.accent}`}><Upload className="w-6 h-6 group-hover:animate-bounce" /> Add Your Media Asset</button>
                   </div>
                </div>
@@ -783,11 +793,17 @@ const App = () => {
               </div>
               <div className="relative mx-auto bg-black rounded-[2rem] md:rounded-[3rem] overflow-hidden shadow-2xl border-4 md:border-8 border-slate-800" style={{ width: '220px', aspectRatio: selectedRatio.ratio }}>
                 {assetType === 'image'
-                  ? <img src={image} className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} style={{ objectPosition: `${50 + imagePan.x * 50}% ${50 + imagePan.y * 50}%` }} alt="Preview" />
+                  ? <img src={image} draggable={false}
+                      className={`w-full h-full select-none ${fitMode === 'cover' ? 'object-cover cursor-grab active:cursor-grabbing' : 'object-contain'}`}
+                      style={{ objectPosition: `${50 + imagePan.x * 50}% ${50 + imagePan.y * 50}%`, touchAction: 'none' }}
+                      onPointerDown={fitMode === 'cover' ? (e) => { e.currentTarget.setPointerCapture(e.pointerId); panStartRef.current = { mx: e.clientX, my: e.clientY, px: imagePan.x, py: imagePan.y }; } : undefined}
+                      onPointerMove={fitMode === 'cover' ? (e) => { if (!panStartRef.current) return; const dx = (e.clientX - panStartRef.current.mx) / 80; const dy = (e.clientY - panStartRef.current.my) / 80; setImagePan({ x: Math.max(-1, Math.min(1, panStartRef.current.px - dx)), y: Math.max(-1, Math.min(1, panStartRef.current.py - dy)) }); } : undefined}
+                      onPointerUp={() => { panStartRef.current = null; }}
+                      alt="Preview" />
                   : <video src={image} muted autoPlay loop className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} />}
               </div>
               {assetType === 'image' && fitMode === 'cover' && (
-                <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-2">Slide image to reframe focus</p>
+                <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-2">Slide to reframe</p>
               )}
               <div className="flex justify-between items-center max-w-2xl mx-auto w-full pt-4">
                  <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] uppercase`}>Back</button>
@@ -909,17 +925,16 @@ const App = () => {
           {step === 3 && (
             <div className="py-4 md:py-6 space-y-10 animate-in fade-in max-w-5xl mx-auto">
               <div className="flex flex-col lg:grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
+                {assetType === 'image' && fitMode === 'cover' && <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mb-2 w-[240px] md:w-[280px] mx-auto">Slide to reframe</p>}
                 <div className="relative group mx-auto bg-black rounded-[2.5rem] md:rounded-[3.5rem] overflow-hidden shadow-2xl border-[8px] md:border-[12px] border-slate-800 w-[240px] md:w-[280px]" style={{ aspectRatio: selectedRatio.ratio }}>
                    {assetType === 'image'
-                     ? <img src={image} className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} ${fitMode === 'cover' ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                         style={{ objectPosition: `${50 + imagePan.x * 50}% ${50 + imagePan.y * 50}%`, userSelect: 'none' }}
-                         onMouseDown={fitMode === 'cover' ? (e) => { setIsPanning(true); panStartRef.current = { mx: e.clientX, my: e.clientY, px: imagePan.x, py: imagePan.y }; } : undefined}
-                         onMouseMove={fitMode === 'cover' ? (e) => { if (!isPanning || !panStartRef.current) return; const dx = (e.clientX - panStartRef.current.mx) / 120; const dy = (e.clientY - panStartRef.current.my) / 120; setImagePan({ x: Math.max(-1, Math.min(1, panStartRef.current.px - dx)), y: Math.max(-1, Math.min(1, panStartRef.current.py - dy)) }); } : undefined}
-                         onMouseUp={() => setIsPanning(false)} onMouseLeave={() => setIsPanning(false)}
-                         onTouchStart={fitMode === 'cover' ? (e) => { setIsPanning(true); panStartRef.current = { mx: e.touches[0].clientX, my: e.touches[0].clientY, px: imagePan.x, py: imagePan.y }; } : undefined}
-                         onTouchMove={fitMode === 'cover' ? (e) => { if (!isPanning || !panStartRef.current) return; const dx = (e.touches[0].clientX - panStartRef.current.mx) / 120; const dy = (e.touches[0].clientY - panStartRef.current.my) / 120; setImagePan({ x: Math.max(-1, Math.min(1, panStartRef.current.px - dx)), y: Math.max(-1, Math.min(1, panStartRef.current.py - dy)) }); } : undefined}
-                         onTouchEnd={() => setIsPanning(false)}
-                         draggable={false} alt="Mix" />
+                     ? <img src={image} draggable={false}
+                         className={`w-full h-full select-none ${fitMode === 'cover' ? 'object-cover cursor-grab active:cursor-grabbing' : 'object-contain'}`}
+                         style={{ objectPosition: `${50 + imagePan.x * 50}% ${50 + imagePan.y * 50}%`, touchAction: 'none' }}
+                         onPointerDown={fitMode === 'cover' ? (e) => { e.currentTarget.setPointerCapture(e.pointerId); panStartRef.current = { mx: e.clientX, my: e.clientY, px: imagePan.x, py: imagePan.y }; } : undefined}
+                         onPointerMove={fitMode === 'cover' ? (e) => { if (!panStartRef.current) return; const dx = (e.clientX - panStartRef.current.mx) / 80; const dy = (e.clientY - panStartRef.current.my) / 80; setImagePan({ x: Math.max(-1, Math.min(1, panStartRef.current.px - dx)), y: Math.max(-1, Math.min(1, panStartRef.current.py - dy)) }); } : undefined}
+                         onPointerUp={() => { panStartRef.current = null; }}
+                         alt="Mix" />
                      : <video ref={previewVideoRef} src={image} muted className="w-full h-full object-cover" onLoadedMetadata={(e) => setVideoDuration(e.target.duration)} />}
                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-6 md:p-8 opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex items-center justify-between gap-4">
