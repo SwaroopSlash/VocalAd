@@ -881,14 +881,12 @@ const App = () => {
                         if (ptrs.length === 1) {
                           const ps = panStartRef.current; if (!ps) return;
                           const dx = e.clientX-ps.mx; const dy = e.clientY-ps.my;
-                          const maxX = Math.max(0, ps.cw*(ps.scale-1)/2); const maxY = Math.max(0, ps.ch*(ps.scale-1)/2);
-                          setImgTransform(prev => ({ ...prev, x: Math.max(-maxX,Math.min(maxX,ps.tx+dx)), y: Math.max(-maxY,Math.min(maxY,ps.ty+dy)) }));
+                          setImgTransform(prev => ({ ...prev, x: ps.tx+dx, y: ps.ty+dy }));
                         } else if (ptrs.length === 2) {
                           const ps = pinchStartRef.current; if (!ps) return;
                           const dx = ptrs[1].x-ptrs[0].x; const dy = ptrs[1].y-ptrs[0].y;
                           const newScale = Math.max(0.3, Math.min(6, ps.scale*(Math.hypot(dx,dy)/ps.dist)));
-                          const maxX = Math.max(0, ps.cw*(newScale-1)/2); const maxY = Math.max(0, ps.ch*(newScale-1)/2);
-                          setImgTransform(prev => ({ ...prev, scale: newScale, rotate: ps.rotate+(Math.atan2(dy,dx)-ps.angle)*(180/Math.PI), x: Math.max(-maxX,Math.min(maxX,prev.x)), y: Math.max(-maxY,Math.min(maxY,prev.y)) }));
+                          setImgTransform(prev => ({ ...prev, scale: newScale, rotate: ps.rotate+(Math.atan2(dy,dx)-ps.angle)*(180/Math.PI) }));
                         }
                       },
                       onPointerUp(e) { activePointersRef.current.delete(e.pointerId); panStartRef.current = null; pinchStartRef.current = null; },
