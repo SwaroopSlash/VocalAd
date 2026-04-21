@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -912,13 +913,14 @@ const App = () => {
               <p className="text-center text-[9px] font-black uppercase tracking-widest text-slate-600 mt-1">Pinch to zoom · Drag to reframe</p>
             </div>
           )}
-          {step === 1 && (
-            <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-3 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent pointer-events-none">
+          {step === 1 && createPortal(
+            <div className="fixed bottom-0 left-0 right-0 z-[9999] px-4 pb-8 pt-16 pointer-events-none" style={{ background: 'linear-gradient(to top, rgba(2,6,23,0.97) 0%, rgba(2,6,23,0.85) 50%, transparent 100%)' }}>
               <div className="max-w-6xl mx-auto flex justify-between items-center pointer-events-auto">
-                <button onClick={() => setStep(0)} className={`${t.textBody} font-black text-[10px] uppercase px-4 py-3`}>Back</button>
+                <button onClick={() => setStep(0)} className="text-slate-400 font-black text-[10px] uppercase px-4 py-3">Back</button>
                 <button onClick={() => setStep(2)} className={`px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-2 shadow-2xl ${t.accent}`}>Go to Voice Studio <ChevronRight className="w-4 h-4" /></button>
               </div>
-            </div>
+            </div>,
+            document.body
           )}
 
           {step === 2 && (
