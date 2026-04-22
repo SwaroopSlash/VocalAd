@@ -435,7 +435,7 @@ const App = () => {
   };
 
   const handleSignOut = async () => {
-    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setStep(0); await signOut(auth); setShowProfileDropdown(false); }
+    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setStep(0); setModalReason("limit"); setShowAuthModal(false); await signOut(auth); setShowProfileDropdown(false); }
     catch (err) { console.error("Sign out failed", err); }
   };
 
@@ -524,7 +524,8 @@ const App = () => {
     if (!text.trim()) return;
     setError(null);
     if (localVoiceCount >= 5) {
-      setModalReason("voice_limit_free"); setShowAuthModal(true);
+      if (user?.isAnonymous) { setModalReason("voice_limit_free"); setShowAuthModal(true); }
+      else setError("Session limit reached (5/5). Start a new project to continue.");
       return;
     }
     setIsGeneratingAudio(true);
@@ -680,12 +681,12 @@ const App = () => {
 
   const getModalContent = () => {
     switch (modalReason) {
-      case "voice_limit_free": return { icon: <Volume2 className="w-8 h-8" />, title: "Voice Limit Reached", body: "3 free voice attempts used. Sign in to continue." };
-      case "out_of_credits": return { icon: <Video className="w-8 h-8" />, title: "Credits Exhausted", body: "Top up now to continue creating." };
+      case "voice_limit_free": return { icon: <Volume2 className="w-8 h-8" />, title: "Voice Limit Reached", body: "You've used all 5 free voice takes. Sign in to start a fresh session." };
+      case "out_of_credits": return { icon: <Video className="w-8 h-8" />, title: "Credits Exhausted", body: "Sign in to purchase more credits and continue creating." };
       case "download_lock": return { icon: <Download className="w-8 h-8" />, title: "Claim Your Ad", body: "Sign in to save and download your work." };
       case "purchase_lock": return { icon: <CreditCard className="w-8 h-8" />, title: "Sign In to Upgrade", body: "Create an account to purchase credits." };
-      case "premium_locked": return { icon: <Sparkles className="w-8 h-8" />, title: "Premium Feature", body: "Upgrade to Creator Pro to unlock advanced features." };
-      default: return { icon: <Sparkles className="w-8 h-8" />, title: "Welcome to VocalAd.ai", body: "Access premium AI tools and high-fidelity production." };
+      case "premium_locked": return { icon: <Sparkles className="w-8 h-8" />, title: "Unlock All Features", body: "Sign in for free to access all voices, languages, and tones." };
+      default: return { icon: <Sparkles className="w-8 h-8" />, title: "Welcome to VocalAd.ai", body: "Sign in to access all features." };
     }
   };
 
@@ -749,7 +750,7 @@ const App = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
            <div className={`${t.dropdown} rounded-[2.5rem] p-8 max-w-sm w-full border text-center space-y-6 shadow-2xl relative`}>
             {isAuthLoading && <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4 rounded-[2.5rem]"><RefreshCw className="w-10 h-10 text-indigo-500 animate-spin" /><p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Verifying Identity...</p></div>}
-            <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-[60]"><X className="w-6 h-6" /></button>
+            <button onClick={() => { setShowAuthModal(false); setModalReason("limit"); }} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-[60]"><X className="w-6 h-6" /></button>
             <div className="w-16 h-16 bg-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto">{getModalContent().icon}</div>
             <h3 className={`text-2xl font-black ${t.textHead}`}>{getModalContent().title}</h3>
             <button onClick={signInWithGoogle} disabled={isAuthLoading} className="w-full py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg hover:bg-slate-100 transition-all border border-slate-200 disabled:opacity-50"><img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" /> Connect with Google</button>
