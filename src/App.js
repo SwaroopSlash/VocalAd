@@ -89,7 +89,7 @@ const RATIOS = [
 const LANGUAGES_LIST = [
   { id: 'en-IN', label: 'Indian English', premium: false },
   { id: 'hi-IN', label: 'Hindi (हिन्दी)', premium: false },
-  { id: 'mr-IN', label: 'Marathi (मराठी)', premium: true },
+  { id: 'mr-IN', label: 'Marathi (मराठी)', premium: false },
   { id: 'bn-IN', label: 'Bengali (বাংলা)', premium: true },
   { id: 'ta-IN', label: 'Tamil (தமிழ்)', premium: true },
   { id: 'te-IN', label: 'Telugu (తెలుగు)', premium: true },
@@ -168,7 +168,7 @@ const App = () => {
   const [currentTheme] = useState('studio');
   const t = THEMES[currentTheme];
 
-  const prevUidRef = React.useRef(null);
+  const prevUserRef = React.useRef(null);
   const [user, setUser] = useState(null);
   const [usage, setUsage] = useState({ creditsRemaining: 0, tier: 'free', videoCount: 0, voiceSamples: 0 });
   const [localVoiceCount, setLocalVoiceCount] = useState(0);
@@ -349,16 +349,22 @@ const App = () => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) { setUser(null); await signInAnonymously(auth); }
       else {
-        // Fresh session when a different user signs in (e.g. anon → named account)
-        if (prevUidRef.current && prevUidRef.current !== u.uid) {
-          setLocalVoiceCount(0);
-          setStep(0);
-          setImage(null);
-          setAudioTakes([]);
-          setSelectedTakeIdx(0);
-          setFinalVideoUrl(null);
+        const prev = prevUserRef.current;
+        if (prev && prev.uid !== u.uid) {
+          if (prev.isAnonymous) {
+            // Guest just signed up — keep their progress, just reset voice count as sign-up reward
+            setLocalVoiceCount(0);
+          } else {
+            // Different named account — full reset
+            setLocalVoiceCount(0);
+            setStep(0);
+            setImage(null);
+            setAudioTakes([]);
+            setSelectedTakeIdx(0);
+            setFinalVideoUrl(null);
+          }
         }
-        prevUidRef.current = u.uid;
+        prevUserRef.current = { uid: u.uid, isAnonymous: u.isAnonymous };
         setUser(u);
         if (!u.isAnonymous) {
           setShowAuthModal(false);
@@ -508,7 +514,7 @@ const App = () => {
     const isPremium = (type === 'lang' && LANGUAGES_LIST.find(l => l.id === val)?.premium) ||
                       (type === 'voice' && VOICES.find(v => v.name === val)?.premium) ||
                       (type === 'tone' && TONES.find(t => t.id === val)?.premium);
-    if (isPremium && usage.tier !== 'paid') { setModalReason("premium_locked"); setShowAuthModal(true); return; }
+    if (isPremium && user?.isAnonymous) { setModalReason("premium_locked"); setShowAuthModal(true); return; }
     if (type === 'lang') setSelectedLanguage(LANGUAGES_LIST.find(l => l.id === val));
     if (type === 'voice') setSelectedVoice(val);
     if (type === 'tone') setSelectedTone(val);
@@ -517,7 +523,7 @@ const App = () => {
   const generateAudio = async () => {
     if (!text.trim()) return;
     setError(null);
-    if (localVoiceCount >= 5 && usage.tier !== 'paid') {
+    if (localVoiceCount >= 5) {
       setModalReason("voice_limit_free"); setShowAuthModal(true);
       return;
     }
@@ -1009,7 +1015,7 @@ const App = () => {
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Language</label>
                        <div className="relative">
                          <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedLanguage.id} onChange={e => handleConfigChange('lang', e.target.value)}>
-                           {LANGUAGES_LIST.map(l => <option key={l.id} value={l.id}>{l.label} {l.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
+                           {LANGUAGES_LIST.map(l => <option key={l.id} value={l.id}>{l.label} {l.premium && user?.isAnonymous ? ' 🔒' : ''}</option>)}
                          </select>
                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
                        </div>
@@ -1018,7 +1024,7 @@ const App = () => {
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Voice Style</label>
                        <div className="relative">
                          <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedVoice} onChange={e => handleConfigChange('voice', e.target.value)}>
-                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.label} ({v.gender === 'female' ? 'Female' : 'Male'}){v.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
+                           {VOICES.map(v => <option key={v.name} value={v.name}>{v.label} ({v.gender === 'female' ? 'Female' : 'Male'}){v.premium && user?.isAnonymous ? ' 🔒' : ''}</option>)}
                          </select>
                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
                        </div>
@@ -1027,7 +1033,7 @@ const App = () => {
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Performance</label>
                        <div className="relative">
                          <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedTone} onChange={e => handleConfigChange('tone', e.target.value)}>
-                           {TONES.map(ton => <option key={ton.id} value={ton.id}>{ton.id} {ton.premium && usage.tier !== 'paid' ? ' 🔒' : ''}</option>)}
+                           {TONES.map(ton => <option key={ton.id} value={ton.id}>{ton.id} {ton.premium && user?.isAnonymous ? ' 🔒' : ''}</option>)}
                          </select>
                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
                        </div>
@@ -1044,9 +1050,9 @@ const App = () => {
                   </div>
 
 
-                  <button disabled={!text.trim() || isGeneratingAudio || (localVoiceCount >= 5 && usage.tier !== 'paid')} onClick={generateAudio} className={`w-full py-5 md:py-6 text-white rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : (localVoiceCount >= 5 && usage.tier !== 'paid') ? 'bg-slate-700 cursor-not-allowed' : t.accent}`}>
+                  <button disabled={!text.trim() || isGeneratingAudio || localVoiceCount >= 5} onClick={generateAudio} className={`w-full py-5 md:py-6 text-white rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : localVoiceCount >= 5 ? 'bg-slate-700 cursor-not-allowed' : t.accent}`}>
                     {isGeneratingAudio ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Volume2 className="w-7 h-7" />}
-                    {isGeneratingAudio ? "Generating Voiceover..." : (localVoiceCount >= 5 && usage.tier !== 'paid') ? "Session Limit Reached — Start New Project" : audioTakes.length > 0 ? `Generate Take ${audioTakes.length + 1}` : "Generate AI Voiceover"}
+                    {isGeneratingAudio ? "Generating Voiceover..." : localVoiceCount >= 5 ? "Session Limit Reached — Start New Project" : audioTakes.length > 0 ? `Generate Take ${audioTakes.length + 1}` : "Generate AI Voiceover"}
                   </button>
                   {isGeneratingAudio && audioProgress > 0 && (
                     <div className="space-y-1.5 px-1 animate-in fade-in">
