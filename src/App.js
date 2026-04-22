@@ -119,6 +119,15 @@ const TONES = [
   { id: 'Trustworthy & Warm', premium: true },
 ];
 
+const BOLI_PERSONAS = [
+  { id: 'kolhapuri', label: 'Kolhapuri',  emoji: '🏔', vibe: 'Raw & Bold',    prompt: 'Use Kolhapuri Marathi dialect — raw, direct, rural south Maharashtra vocabulary, strong assertive tone, local idioms like "kay mhanta", avoid formal Marathi.' },
+  { id: 'puneri',    label: 'Puneri',     emoji: '🏛', vibe: 'Sharp & Witty', prompt: 'Use Puneri Marathi dialect — slightly sarcastic, sharp, urban Pune style, confident tone, educated vocabulary mixed with local wit.' },
+  { id: 'konkan',    label: 'Konkan',     emoji: '🌊', vibe: 'Soft & Warm',   prompt: 'Use Konkan Marathi dialect — soft, warm, coastal belt style, gentle rhythm, community-feeling language, slightly slow-paced and welcoming.' },
+  { id: 'mumbaiya',  label: 'Mumbaikar',  emoji: '🏙', vibe: 'Street Mix',   prompt: 'Use Mumbaikar style — mix of Marathi and Hindi street language, fast-paced, urban energy, casual and relatable to Mumbai working class.' },
+  { id: 'vidarbha',  label: 'Vidarbha',   emoji: '🌾', vibe: 'Earthy & Real', prompt: 'Use Vidarbha Marathi dialect — eastern Maharashtra, earthy vocabulary, straightforward farming-community tone, grounded and honest.' },
+  { id: 'standard',  label: 'Standard',   emoji: '✍️', vibe: 'Formal',        prompt: null },
+];
+
 const VOICE_PREVIEW_PHRASES = {
   'en-IN': "Welcome to VocalAd. Your voice, your brand.",
   'hi-IN': "नमस्ते, VocalAd में आपका स्वागत है।",
@@ -203,6 +212,7 @@ const App = () => {
 
   const [showMagicWand, setShowMagicWand] = useState(false);
   const [magicPrompt, setMagicPrompt] = useState("");
+  const [selectedBoli, setSelectedBoli] = useState(null);
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
@@ -1220,19 +1230,49 @@ const App = () => {
       )}
       {showMagicWand && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/95 backdrop-blur-2xl">
-          <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full space-y-6 shadow-2xl relative">
+          <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button onClick={() => setShowMagicWand(false)} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X className="w-6 h-6" /></button>
-            <div className="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mb-2"><Wand2 className="w-8 h-8" /></div>
-            <h3 className="text-3xl font-black text-white tracking-tight">Write with AI</h3>
-            <p className="text-slate-400 text-sm">Target Language: <span className="text-indigo-400 font-bold">{selectedLanguage.label}</span></p>
-            <textarea className="w-full p-6 bg-slate-800 border-2 border-slate-700 rounded-2xl outline-none text-white focus:border-indigo-500 h-32" placeholder="e.g. A shoe brand summer sale, 15 second TV spot..." value={magicPrompt} onChange={e => setMagicPrompt(e.target.value)} />
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center"><Wand2 className="w-7 h-7" /></div>
+              <div>
+                <h3 className="text-2xl font-black text-white tracking-tight">Write with AI</h3>
+                <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Language: {selectedLanguage.label}</p>
+              </div>
+            </div>
+            <textarea className="w-full p-5 bg-slate-800 border-2 border-slate-700 rounded-2xl outline-none text-white focus:border-indigo-500 h-28 text-sm" placeholder="e.g. A shoe brand summer sale targeting young women..." value={magicPrompt} onChange={e => setMagicPrompt(e.target.value)} />
+
+            {/* Boli Mode */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">🗣 Boli Mode</p>
+                <span className="text-[8px] font-black bg-amber-500/20 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">EXPERIMENTAL</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {BOLI_PERSONAS.map(b => (
+                  <button key={b.id} onClick={() => setSelectedBoli(selectedBoli?.id === b.id ? null : b)}
+                    className={`p-3 rounded-2xl border-2 text-left transition-all ${selectedBoli?.id === b.id ? 'border-amber-500 bg-amber-500/10' : 'border-white/5 bg-white/5 hover:border-white/20'}`}>
+                    <div className="text-lg mb-1">{b.emoji}</div>
+                    <p className="text-[10px] font-black text-white">{b.label}</p>
+                    <p className="text-[8px] text-slate-500 font-bold">{b.vibe}</p>
+                  </button>
+                ))}
+              </div>
+              {selectedBoli && selectedBoli.id !== 'standard' && (
+                <p className="text-[9px] text-amber-400/80 font-bold px-1">✦ Script will be written in {selectedBoli.label} dialect</p>
+              )}
+            </div>
+
             {authError && <p className="text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{authError}</p>}
             <button onClick={async () => {
                 if (!magicPrompt.trim()) return;
                 setIsGeneratingScript(true); setAuthError("");
                 try {
                   const generateScriptFn = httpsCallable(functions, 'generateScript');
-                  const result = await generateScriptFn({ prompt: magicPrompt.trim(), language: selectedLanguage.label });
+                  const result = await generateScriptFn({
+                    prompt: magicPrompt.trim(),
+                    language: selectedLanguage.label,
+                    boliPrompt: selectedBoli?.prompt || null,
+                  });
                   setText(result.data.script); setShowMagicWand(false);
                 } catch (e) { setAuthError(e.message); } finally { setIsGeneratingScript(false); }
             }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3">

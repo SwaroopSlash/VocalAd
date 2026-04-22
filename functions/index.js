@@ -260,14 +260,18 @@ exports.generateScript = onCall({
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to generate script.");
 
-  const { prompt, language } = request.data;
+  const { prompt, language, boliPrompt } = request.data;
   if (!prompt?.trim()) throw new HttpsError("invalid-argument", "Prompt is required.");
 
   const apiKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
   const BRAIN_MODEL = "gemini-2.5-flash";
   const BRAIN_FALLBACK = "gemini-2.0-flash";
 
-  const fullPrompt = `You are an ad copywriter. Brief: "${prompt}". Language: ${language}.\nWrite a 15-second commercial script — max 40 words — containing ONLY words to be spoken aloud.\nYou MAY use these Gemini TTS expression tags sparingly: [excited], [warm], [serious], [whispers], [short pause], [medium pause], [playful], [curious], [laughs], [sighs].\nKeep all expression tags in English even if the script is in another language.\nNEVER include sound effects, music cues, physical actions, or scene directions.\nOutput the script only — no title, no labels, no explanation.`;
+  const wordCount = prompt.trim().split(/\s+/).length;
+  const targetWords = wordCount <= 10 ? 40 : Math.round(wordCount * 1.2);
+  const dialectLine = boliPrompt ? `\nDialect instruction: ${boliPrompt}` : '';
+
+  const fullPrompt = `You are an ad copywriter. Brief: "${prompt}". Language: ${language}.${dialectLine}\nWrite a spoken commercial script of approximately ${targetWords} words — containing ONLY words to be spoken aloud.\nYou MAY use these Gemini TTS expression tags sparingly: [excited], [serious], [whispers], [short pause], [medium pause], [curious], [laughs], [sighs].\nKeep all expression tags in English even if the script is in another language.\nNEVER include sound effects, music cues, physical actions, or scene directions.\nOutput the script only — no title, no labels, no explanation.`;
 
   const payload = { contents: [{ parts: [{ text: fullPrompt }] }] };
   let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
