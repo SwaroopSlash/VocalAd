@@ -74,10 +74,10 @@ const functions = getFunctions(app, 'us-central1');
 const appId = 'advocalize-pro-v2'; // VERSION 2.1 STABLE
 
 const PLANS = [
-  { id: 'single', label: 'Quick Top-up', credits: 1, price: 10, color: 'emerald' },
-  { id: 'starter', label: 'Starter Pack', credits: 10, price: 99, color: 'indigo' },
-  { id: 'pro', label: 'Creator Pro', credits: 50, price: 399, color: 'purple' },
-  { id: 'agency', label: 'Agency Scale', credits: 200, price: 999, color: 'blue' },
+  { id: 'single',  label: 'Single',   credits: 1,   price: 10,  color: 'emerald', saving: null },
+  { id: 'starter', label: 'Starter',  credits: 10,  price: 79,  color: 'indigo',  saving: 'Save 21%' },
+  { id: 'pro',     label: 'Growth',   credits: 50,  price: 349, color: 'purple',  saving: 'Save 30%' },
+  { id: 'agency',  label: 'Scale',    credits: 200, price: 799, color: 'blue',    saving: 'Save 60%' },
 ];
 
 const RATIOS = [
@@ -317,9 +317,18 @@ const App = () => {
   }, []);
 
   const isPopNavRef = React.useRef(false);
+  const showUPIModalRef = React.useRef(false);
+  const showAuthModalRef = React.useRef(false);
+  const showMixPopupRef = React.useRef(false);
+  useEffect(() => { showUPIModalRef.current = showUPIModal; }, [showUPIModal]);
+  useEffect(() => { showAuthModalRef.current = showAuthModal; }, [showAuthModal]);
+  useEffect(() => { showMixPopupRef.current = showMixPopup; }, [showMixPopup]);
   useEffect(() => {
     try { window.history.replaceState({ step: 0 }, ''); } catch (_) {}
     const handlePop = (e) => {
+      if (showUPIModalRef.current) { setShowUPIModal(false); window.history.pushState(window.history.state, ''); return; }
+      if (showAuthModalRef.current) { setShowAuthModal(false); setModalReason("limit"); window.history.pushState(window.history.state, ''); return; }
+      if (showMixPopupRef.current) { setShowMixPopup(false); window.history.pushState(window.history.state, ''); return; }
       isPopNavRef.current = true;
       setStep(typeof e.state?.step === 'number' ? e.state.step : 0);
     };
@@ -732,7 +741,10 @@ const App = () => {
                   <div className="grid gap-2">
                     {PLANS.map(p => (
                       <button key={p.id} onClick={() => setSelectedPlan(p)} className={`p-4 rounded-2xl border-2 transition-all flex justify-between items-center ${selectedPlan.id === p.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/5 bg-white/5'}`}>
-                        <div><p className="text-[9px] font-black uppercase text-slate-500 tracking-widest">{p.label}</p><h4 className="text-sm font-black text-white">{p.credits} Credits</h4></div>
+                        <div className="flex items-center gap-3">
+                          <div><p className="text-[9px] font-black uppercase text-slate-500 tracking-widest">{p.label}</p><h4 className="text-sm font-black text-white">{p.credits} Credit{p.credits > 1 ? 's' : ''}</h4></div>
+                          {p.saving && <span className="text-[8px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">{p.saving}</span>}
+                        </div>
                         <p className="text-xl font-black text-white">₹{p.price}</p>
                       </button>
                     ))}
