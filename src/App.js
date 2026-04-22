@@ -168,6 +168,7 @@ const App = () => {
   const [currentTheme] = useState('studio');
   const t = THEMES[currentTheme];
 
+  const prevUidRef = React.useRef(null);
   const [user, setUser] = useState(null);
   const [usage, setUsage] = useState({ creditsRemaining: 0, tier: 'free', videoCount: 0, voiceSamples: 0 });
   const [localVoiceCount, setLocalVoiceCount] = useState(0);
@@ -346,8 +347,18 @@ const App = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      if (!u) { setUser(null); await signInAnonymously(auth); } 
+      if (!u) { setUser(null); await signInAnonymously(auth); }
       else {
+        // Fresh session when a different user signs in (e.g. anon → named account)
+        if (prevUidRef.current && prevUidRef.current !== u.uid) {
+          setLocalVoiceCount(0);
+          setStep(0);
+          setImage(null);
+          setAudioTakes([]);
+          setSelectedTakeIdx(0);
+          setFinalVideoUrl(null);
+        }
+        prevUidRef.current = u.uid;
         setUser(u);
         if (!u.isAnonymous) {
           setShowAuthModal(false);
@@ -506,9 +517,8 @@ const App = () => {
   const generateAudio = async () => {
     if (!text.trim()) return;
     setError(null);
-    if (localVoiceCount >= 5) {
-      if (usage.tier !== 'paid') { setModalReason("voice_limit_free"); setShowAuthModal(true); }
-      else setError("Session limit reached (5/5). Start a new project to generate more voices.");
+    if (localVoiceCount >= 5 && usage.tier !== 'paid') {
+      setModalReason("voice_limit_free"); setShowAuthModal(true);
       return;
     }
     setIsGeneratingAudio(true);
@@ -769,7 +779,7 @@ const App = () => {
         <div className={`flex items-center justify-between p-4 md:p-8 border-b backdrop-blur-xl sticky top-0 z-40 transition-all ${t.nav}`}>
            <div className="flex items-center gap-2 md:gap-3">
               <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center shadow-lg transition-all ${t.accent}`}><Megaphone className="w-5 h-5 md:w-6 md:h-6" /></div>
-              <h1 className={`text-lg md:text-2xl font-black tracking-tighter transition-all ${t.textHead}`}>VocalAd.ai</h1>
+              <h1 className={`text-lg md:text-2xl font-black tracking-tighter transition-all ${t.textHead}`}>Vocal<span style={{color:'#f97316'}}>Ad</span>.ai</h1>
            </div>
            <div className="flex items-center gap-2 md:gap-4 relative" ref={dropdownRef}>
               <button onClick={handlePurchase} className="bg-indigo-500/10 px-3 py-1.5 md:px-5 md:py-2.5 rounded-full text-[9px] md:text-[10px] font-black tracking-widest border border-indigo-500/20 flex items-center gap-1.5 md:gap-2 hover:bg-indigo-500/20 transition-all">
@@ -1034,9 +1044,9 @@ const App = () => {
                   </div>
 
 
-                  <button disabled={!text.trim() || isGeneratingAudio || localVoiceCount >= 5} onClick={generateAudio} className={`w-full py-5 md:py-6 text-white rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : localVoiceCount >= 5 ? 'bg-slate-700 cursor-not-allowed' : t.accent}`}>
+                  <button disabled={!text.trim() || isGeneratingAudio || (localVoiceCount >= 5 && usage.tier !== 'paid')} onClick={generateAudio} className={`w-full py-5 md:py-6 text-white rounded-[2rem] font-black text-base md:text-xl shadow-2xl flex items-center justify-center gap-4 transition-all ${isGeneratingAudio ? 'bg-slate-500' : (localVoiceCount >= 5 && usage.tier !== 'paid') ? 'bg-slate-700 cursor-not-allowed' : t.accent}`}>
                     {isGeneratingAudio ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Volume2 className="w-7 h-7" />}
-                    {isGeneratingAudio ? "Generating Voiceover..." : localVoiceCount >= 5 ? "Session Limit Reached — Start New Project" : audioTakes.length > 0 ? `Generate Take ${audioTakes.length + 1}` : "Generate AI Voiceover"}
+                    {isGeneratingAudio ? "Generating Voiceover..." : (localVoiceCount >= 5 && usage.tier !== 'paid') ? "Session Limit Reached — Start New Project" : audioTakes.length > 0 ? `Generate Take ${audioTakes.length + 1}` : "Generate AI Voiceover"}
                   </button>
                   {isGeneratingAudio && audioProgress > 0 && (
                     <div className="space-y-1.5 px-1 animate-in fade-in">
