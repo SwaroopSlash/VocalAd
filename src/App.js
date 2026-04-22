@@ -316,15 +316,19 @@ const App = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Mobile back button — anchor step 0 in history, then push on each advance
+  const isPopNavRef = React.useRef(false);
   useEffect(() => {
     try { window.history.replaceState({ step: 0 }, ''); } catch (_) {}
-    const handlePop = (e) => setStep(typeof e.state?.step === 'number' ? e.state.step : 0);
+    const handlePop = (e) => {
+      isPopNavRef.current = true;
+      setStep(typeof e.state?.step === 'number' ? e.state.step : 0);
+    };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
   }, []);
   useEffect(() => {
     if (step === 0) return;
+    if (isPopNavRef.current) { isPopNavRef.current = false; return; }
     try { window.history.pushState({ step }, ''); } catch (_) {}
   }, [step]);
 
