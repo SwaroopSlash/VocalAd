@@ -369,12 +369,15 @@ const App = () => {
   const showUPIModalRef = React.useRef(false);
   const showAuthModalRef = React.useRef(false);
   const showMixPopupRef = React.useRef(false);
+  const showThemePickerRef = React.useRef(false);
   useEffect(() => { showUPIModalRef.current = showUPIModal; }, [showUPIModal]);
   useEffect(() => { showAuthModalRef.current = showAuthModal; }, [showAuthModal]);
   useEffect(() => { showMixPopupRef.current = showMixPopup; }, [showMixPopup]);
+  useEffect(() => { showThemePickerRef.current = showThemePicker; }, [showThemePicker]);
   useEffect(() => {
     try { window.history.replaceState({ step: 0 }, ''); } catch (_) {}
     const handlePop = (e) => {
+      if (showThemePickerRef.current) { setShowThemePicker(false); setThemePickerDismissed(true); window.history.pushState(window.history.state, ''); return; }
       if (showUPIModalRef.current) { setShowUPIModal(false); window.history.pushState(window.history.state, ''); return; }
       if (showAuthModalRef.current) { setShowAuthModal(false); setModalReason("limit"); window.history.pushState(window.history.state, ''); return; }
       if (showMixPopupRef.current) { setShowMixPopup(false); window.history.pushState(window.history.state, ''); return; }
@@ -1125,9 +1128,9 @@ const App = () => {
                                if (imageContext) {
                                  const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a fresh creative ad script for: "${imageContext}". Make it a different angle or hook from: "${text.substring(0, 120)}"`, language: selectedLanguage.label, boliPrompt: null });
                                  s = r.data.script || '';
-                               } else if (imageScript && imageScript !== 'loading' && image) {
-                                 const img = await resizeIfNeeded(image);
-                                 const r = await httpsCallable(functions, 'analyzeImage')({ imageBase64: img });
+                               } else if (imageScript && imageScript !== 'loading') {
+                                 // Re-use image concept as text context — never re-calls analyzeImage
+                                 const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a fresh creative ad script variation. Original image concept: "${imageScript.substring(0, 150)}". Make it a different angle or hook from: "${text.substring(0, 120)}"`, language: selectedLanguage.label, boliPrompt: null });
                                  s = r.data.script || '';
                                } else {
                                  const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a fresh creative variation of this ad script with a different angle or hook: "${text}"`, language: selectedLanguage.label, boliPrompt: null });
@@ -1410,12 +1413,24 @@ const App = () => {
                   setImageContext(theme.label);
                   setShowThemePicker(false);
                   setThemePickerDismissed(true);
-                  if (i > 0) {
-                    setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
+                  // Always clear previous suggestions — they belonged to a different theme context
+                  setSuggestions([]); setSuggestionIdx(-1); setText('');
+                  if (i === 0 && imageScript && imageScript !== 'loading') {
+                    // Theme 0: analyzeImage already returned a script for this — use it directly
+                    setText(imageScript);
+                    setSuggestions([imageScript]);
+                    setSuggestionIdx(0);
+                  } else {
+                    // Other themes: generate fresh script, restore state on failure
+                    const savedText = text;
+                    setImageScript('loading');
                     try {
                       const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${theme.label}"`, language: selectedLanguage.label, boliPrompt: null });
                       setImageScript(r.data.script || '');
-                    } catch (_) { setImageScript(''); }
+                    } catch (_) {
+                      setImageScript(''); setText(savedText);
+                      setSelectedTheme(null); setImageContext(null);
+                    }
                   }
                 }} className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-white/15 bg-slate-900 text-slate-200 text-sm font-black hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-95 transition-all">
                   <span className="text-xl leading-none">{theme.emoji}</span>
@@ -1436,13 +1451,14 @@ const App = () => {
                     if (e.key !== 'Enter' || !customThemeInput.trim()) return;
                     const label = customThemeInput.trim();
                     const custom = { emoji: '✏️', label };
+                    const savedText = text;
                     setSelectedTheme(custom); setImageContext(label);
                     setShowThemePicker(false); setThemePickerDismissed(true);
                     setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
                     try {
                       const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${label}"`, language: selectedLanguage.label, boliPrompt: null });
                       setImageScript(r.data.script || '');
-                    } catch (_) { setImageScript(''); }
+                    } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); }
                   }}
                   placeholder="e.g. festive offer, product launch, brand story..."
                   className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`}
@@ -1451,13 +1467,14 @@ const App = () => {
                   const label = customThemeInput.trim();
                   if (!label) return;
                   const custom = { emoji: '✏️', label };
+                  const savedText = text;
                   setSelectedTheme(custom); setImageContext(label);
                   setShowThemePicker(false); setThemePickerDismissed(true);
                   setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
                   try {
                     const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${label}"`, language: selectedLanguage.label, boliPrompt: null });
                     setImageScript(r.data.script || '');
-                  } catch (_) { setImageScript(''); }
+                  } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); }
                 }} className={`px-4 py-3 rounded-2xl font-black text-sm disabled:opacity-40 transition-all ${t.accent}`}>→</button>
               </div>
             )}

@@ -321,12 +321,26 @@ exports.generateScript = onCall({
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to generate script.");
 
-  const { prompt, language, boliPrompt } = request.data;
+  const { prompt, language, boliPrompt, lightweight } = request.data;
   if (!prompt?.trim()) throw new HttpsError("invalid-argument", "Prompt is required.");
 
   const apiKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
   const BRAIN_MODEL = "gemini-2.5-flash";
   const BRAIN_FALLBACK = "gemini-2.0-flash";
+  const LIGHT_MODEL = "gemini-2.0-flash-lite";
+
+  // Lightweight path: meta-analysis calls (nudge chip JSON, convergence synthesis)
+  // Uses cheaper model, skips script formatting, returns raw text for frontend to parse
+  if (lightweight) {
+    const payload = { contents: [{ parts: [{ text: prompt }] }] };
+    let result = await callGeminiRest(LIGHT_MODEL, payload, apiKey);
+    if (result.error) result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
+    if (result.error) throw new HttpsError("internal", result.error.message);
+    const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```json|```/g, "").trim();
+    if (!script) throw new HttpsError("internal", "AI returned empty response.");
+    logger.info("LIGHT_SCRIPT_GENERATED", { uid: request.auth.uid });
+    return { script };
+  }
 
   const wordCount = prompt.trim().split(/\s+/).length;
   const targetWords = wordCount <= 10 ? 40 : Math.round(wordCount * 1.2);
@@ -334,11 +348,17 @@ exports.generateScript = onCall({
 
   const fullPrompt = `You are an ad copywriter. Brief: "${prompt}". Language: ${language}.${dialectLine}\nWrite a spoken commercial script of approximately ${targetWords} words — containing ONLY words to be spoken aloud.\nYou MAY use these Gemini TTS expression tags sparingly: [excited], [serious], [whispers], [short pause], [medium pause], [curious], [laughs], [sighs].\nKeep all expression tags in English even if the script is in another language.\nNEVER include sound effects, music cues, physical actions, or scene directions.\nOutput the script only — no title, no labels, no explanation.`;
 
-  const payload = { contents: [{ parts: [{ text: fullPrompt }] }] };
+  // thinkingBudget: 0 disables chain-of-thought tokens on gemini-2.5-flash
+  // Ad scripts don't need deep reasoning — cuts latency ~40%
+  const payload = {
+    contents: [{ parts: [{ text: fullPrompt }] }],
+    generationConfig: { thinkingConfig: { thinkingBudget: 0 } }
+  };
   let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
   if (result.error) {
     logger.warn("SCRIPT_PRIMARY_FAILED", { msg: result.error.message });
-    result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
+    const fallbackPayload = { contents: [{ parts: [{ text: fullPrompt }] }] };
+    result = await callGeminiRest(BRAIN_FALLBACK, fallbackPayload, apiKey);
     if (result.error) throw new HttpsError("internal", result.error.message);
   }
 
