@@ -209,8 +209,8 @@ exports.generateVoice = onCall({
 
   const voiceKey = (process.env.GEMINI_VOICE_API_KEY || "").trim();
   const brainKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
-  const VOICE_MODEL = "gemini-2.5-flash-preview-tts";
-  const VOICE_FALLBACK = "gemini-3.1-flash-tts-preview";
+  const VOICE_MODEL = "gemini-3.5-flash-preview-tts";
+  const VOICE_FALLBACK = "gemini-2.5-flash-preview-tts";
   const BRAIN_MODEL = "gemini-2.5-flash";
   const BRAIN_FALLBACK = "gemini-2.0-flash";
 
