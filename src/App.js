@@ -1086,20 +1086,26 @@ const App = () => {
                      <div className="flex items-center justify-end px-2 pt-1">
                        <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
                      </div>
-                     {imageScript && imageScript !== 'loading' && (
+                     {text.trim() && (
                        <div className="space-y-2 animate-in fade-in">
                          <div className="flex items-center justify-center gap-3">
                            <button disabled={isGeneratingSuggestion || suggestions.length >= 10} onClick={async () => {
                              setIsGeneratingSuggestion(true);
                              try {
-                               const img = await resizeIfNeeded(image);
-                               const r = await httpsCallable(functions, 'analyzeImage')({ imageBase64: img });
-                               const s = r.data.script || '';
+                               let s = '';
+                               if (imageScript && imageScript !== 'loading' && image) {
+                                 const img = await resizeIfNeeded(image);
+                                 const r = await httpsCallable(functions, 'analyzeImage')({ imageBase64: img });
+                                 s = r.data.script || '';
+                               } else {
+                                 const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a fresh creative variation of this ad script with a different angle or hook: "${text}"`, language: selectedLanguage.label, boliPrompt: null });
+                                 s = r.data.script || '';
+                               }
                                if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); }
                              } catch (e) {} finally { setIsGeneratingSuggestion(false); }
                            }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-300 text-[10px] font-black uppercase tracking-wider hover:border-white/25 disabled:opacity-40 transition-all">
                              {isGeneratingSuggestion ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                             {suggestions.length >= 10 ? '10/10 suggestions used' : 'New Suggestion'}
+                             {suggestions.length >= 10 ? '10/10 used' : 'New Suggestion'}
                            </button>
                            <button onClick={() => { setShowInstructions(p => !p); setInstructionInput(''); }} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all ${showInstructions ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-800 border-white/10 text-slate-300 hover:border-white/25'}`}>
                              ✎ Add Instructions
@@ -1112,8 +1118,7 @@ const App = () => {
                                if (!instructionInput.trim()) return;
                                setIsGeneratingSuggestion(true);
                                try {
-                                 const fn = httpsCallable(functions, 'generateScript');
-                                 const r = await fn({ prompt: `Rewrite this ad script following this instruction: "${instructionInput}". Current script: "${text}"`, language: selectedLanguage.label, boliPrompt: null });
+                                 const r = await httpsCallable(functions, 'generateScript')({ prompt: `Rewrite this ad script following this instruction: "${instructionInput}". Current script: "${text}"`, language: selectedLanguage.label, boliPrompt: null });
                                  const s = r.data.script || '';
                                  if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); setShowInstructions(false); setInstructionInput(''); }
                                } catch (e) {} finally { setIsGeneratingSuggestion(false); }
