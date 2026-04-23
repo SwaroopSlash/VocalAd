@@ -1100,22 +1100,20 @@ const App = () => {
                      >
                        <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={imageScript === 'loading' ? "✦ Analyzing your image..." : "Type ad text here..."} />
                      </div>
-                     {suggestions.length > 1 && (
-                       <div className="flex items-center justify-center gap-3 py-0.5">
-                         <button className="w-7 h-7 rounded-full bg-slate-800 border border-white/10 text-white text-xs flex items-center justify-center hover:bg-slate-700 disabled:opacity-25 transition-all" disabled={suggestionIdx === 0} onClick={() => { const i = suggestionIdx - 1; setSuggestionIdx(i); setText(suggestions[i]); }}>←</button>
-                         <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{suggestionIdx + 1} of {suggestions.length}</span>
-                         <button className="w-7 h-7 rounded-full bg-slate-800 border border-white/10 text-white text-xs flex items-center justify-center hover:bg-slate-700 disabled:opacity-25 transition-all" disabled={suggestionIdx === suggestions.length - 1} onClick={() => { const i = suggestionIdx + 1; setSuggestionIdx(i); setText(suggestions[i]); }}>→</button>
+                     <div className="flex items-center px-2 pt-1 gap-2">
+                       <div className="w-24 shrink-0">
+                         {selectedTheme && (
+                           <button onClick={() => setShowThemePicker(true)} className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors leading-tight">
+                             ↻ {selectedTheme.emoji} {selectedTheme.label}
+                           </button>
+                         )}
                        </div>
-                     )}
-                     <div className="flex items-center justify-between px-2 pt-1">
-                       {selectedTheme ? (
-                         <button onClick={() => setShowThemePicker(true)} className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors">
-                           ↻ {selectedTheme.emoji} {selectedTheme.label}
-                         </button>
-                       ) : (
-                         <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest">{suggestions.length > 1 ? '↔ swipe to browse' : ''}</span>
-                       )}
-                       <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
+                       <div className="flex-1 text-center">
+                         {suggestions.length > 1 && <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest">↔ swipe to browse</span>}
+                       </div>
+                       <div className="w-24 shrink-0 text-right">
+                         {suggestions.length > 0 && <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{suggestionIdx + 1}/{suggestions.length} scripts</span>}
+                       </div>
                      </div>
                      {text.trim() && (
                        <div className="space-y-2 animate-in fade-in">
@@ -1165,17 +1163,7 @@ const App = () => {
                      )}
                   </div>
 
-                  {/* GRID ALIGNMENT: 4 Equal Columns */}
-                  <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 items-end">
-                    <div className="flex flex-col gap-2">
-                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Language</label>
-                       <div className="relative">
-                         <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedLanguage.id} onChange={e => handleConfigChange('lang', e.target.value)}>
-                           {LANGUAGES_LIST.map(l => <option key={l.id} value={l.id}>{l.label} {l.premium && user?.isAnonymous ? ' 🔒' : ''}</option>)}
-                         </select>
-                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
-                       </div>
-                    </div>
+                  <div className="grid grid-cols-2 gap-4 md:gap-6 items-end">
                     <div className="flex flex-col gap-2">
                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Voice Style</label>
                        <div className="relative">
@@ -1190,15 +1178,6 @@ const App = () => {
                        <div className="relative">
                          <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedTone} onChange={e => handleConfigChange('tone', e.target.value)}>
                            {TONES.map(ton => <option key={ton.id} value={ton.id}>{ton.id} {ton.premium && user?.isAnonymous ? ' 🔒' : ''}</option>)}
-                         </select>
-                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
-                       </div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                       <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 opacity-60 px-1">Pace</label>
-                       <div className="relative">
-                         <select className={`w-full p-4 md:p-5 pr-10 border-2 rounded-2xl font-bold text-[11px] md:text-xs transition-all ${t.input} cursor-pointer appearance-none`} value={selectedSpeed.label} onChange={e => setSelectedSpeed(SPEEDS.find(s => s.label === e.target.value))}>
-                           {SPEEDS.map(s => <option key={s.label} value={s.label}>{s.label}</option>)}
                          </select>
                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
                        </div>
@@ -1255,7 +1234,10 @@ const App = () => {
                     </div>
                   )}
 
-                  <button onClick={() => setStep(1)} className={`w-full text-center ${t.textBody} font-black text-[9px] uppercase hover:text-indigo-500`}>Back to delivery style</button>
+                  <div className="flex items-center justify-between px-1">
+                    <button onClick={() => setStep(1)} className={`${t.textBody} font-black text-[9px] uppercase hover:text-indigo-500`}>← Back to delivery style</button>
+                    <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
+                  </div>
                </div>
             </div>
           )}
