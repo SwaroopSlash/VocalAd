@@ -1083,7 +1083,8 @@ const App = () => {
                          <button className="w-7 h-7 rounded-full bg-slate-800 border border-white/10 text-white text-xs flex items-center justify-center hover:bg-slate-700 disabled:opacity-25 transition-all" disabled={suggestionIdx === suggestions.length - 1} onClick={() => { const i = suggestionIdx + 1; setSuggestionIdx(i); setText(suggestions[i]); }}>→</button>
                        </div>
                      )}
-                     <div className="flex items-center justify-end px-2 pt-1">
+                     <div className="flex items-center justify-between px-2 pt-1">
+                       <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest">{suggestions.length > 1 ? '↔ swipe to browse' : ''}</span>
                        <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
                      </div>
                      {text.trim() && (
