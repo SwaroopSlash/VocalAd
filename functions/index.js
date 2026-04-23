@@ -273,10 +273,17 @@ exports.analyzeImage = onCall({
   const BRAIN_MODEL = "gemini-2.5-flash";
   const BRAIN_FALLBACK = "gemini-2.0-flash";
 
-  const prompt = `You are an ad copywriter. Analyze this image carefully.
-If you clearly identify a product, service, brand, or commercial concept — write a compelling 30-40 word voiceover ad script. Make it punchy, persuasive, and ready to record. Output ONLY the script text.
-If the image is a personal photo, unclear, not commercial, or you are not confident — output exactly: SKIP
-No explanations. No labels.`;
+  const prompt = `You are an expert ad copywriter and voice director. Analyze this image carefully.
+
+If you clearly identify a product, service, brand, or commercial concept:
+LANGUAGE: Detect the language of any visible text in the image and write the script in that language. If no text is visible or the text is in English, write in English.
+BRAND: Include the brand name ONLY if it is explicitly visible in the image. Never guess or infer a brand name.
+TONE: Write with high energy — excited, punchy, and engaging like a real TV or radio commercial.
+TAGS: Use Gemini TTS expression tags naturally and generously throughout: [excited], [laughs], [short pause], [medium pause], [curious], [whispers], [serious], [sighs]. Tags must always stay in English even if the script is in another language.
+LENGTH: 30-40 words of spoken content.
+OUTPUT: The script only — no title, no label, no explanation.
+
+If the image is a personal photo, unclear, not commercial, or you are not confident about what to advertise — output exactly: SKIP`;
 
   const payload = {
     contents: [{ parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }]

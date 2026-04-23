@@ -1100,8 +1100,9 @@ const App = () => {
                         <label className={`font-black text-[10px] uppercase tracking-widest ${t.textBody}`}>Script Master</label>
                      </div>
                      <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={imageScript === 'loading' ? "✦ Analyzing your image..." : "Type ad text here..."} />
-                     <div className="flex justify-between px-2 pt-1">
+                     <div className="flex items-center justify-between px-2 pt-1">
                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{text.trim() ? text.trim().split(/\s+/).length : 0} words · ~{Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / 2.5)}s</span>
+                       <button onClick={() => { setMagicPrompt(text || ""); setShowMagicWand(true); }} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Write with AI</button>
                        <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
                      </div>
                      {imageScript && imageScript !== 'loading' && text === imageScript && (
@@ -1116,9 +1117,6 @@ const App = () => {
                          }}>Refresh</button>
                        </p>
                      )}
-                     <div className="flex justify-center pt-1">
-                       <button onClick={() => { setMagicPrompt(text || ""); setShowMagicWand(true); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Write with AI</button>
-                     </div>
                   </div>
 
                   {/* GRID ALIGNMENT: 4 Equal Columns */}
