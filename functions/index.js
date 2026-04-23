@@ -251,6 +251,50 @@ exports.generateVoice = onCall({
   return { audioBase64: inlineData.data, mimeType: inlineData.mimeType };
 });
 
+// ── analyzeImage — auto-suggest script from uploaded image ───────────────────
+exports.analyzeImage = onCall({
+  cors: true,
+  region: "us-central1",
+  secrets: ["GEMINI_BRAIN_API_KEY"],
+  timeoutSeconds: 30,
+  memory: "256MiB"
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to analyze image.");
+
+  const { imageBase64 } = request.data;
+  if (!imageBase64) return { script: null };
+
+  const match = imageBase64.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return { script: null };
+
+  const mimeType = match[1];
+  const base64Data = match[2];
+  const apiKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
+  const BRAIN_MODEL = "gemini-2.5-flash";
+  const BRAIN_FALLBACK = "gemini-2.0-flash";
+
+  const prompt = `You are an ad copywriter. Analyze this image carefully.
+If you clearly identify a product, service, brand, or commercial concept — write a compelling 30-40 word voiceover ad script. Make it punchy, persuasive, and ready to record. Output ONLY the script text.
+If the image is a personal photo, unclear, not commercial, or you are not confident — output exactly: SKIP
+No explanations. No labels.`;
+
+  const payload = {
+    contents: [{ parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }]
+  };
+
+  try {
+    let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
+    if (result.error) result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text || text === 'SKIP') return { script: null };
+    logger.info("IMAGE_ANALYZED", { uid: request.auth.uid });
+    return { script: text };
+  } catch (e) {
+    logger.warn("IMAGE_ANALYSIS_FAILED", { msg: e.message, uid: request.auth.uid });
+    return { script: null };
+  }
+});
+
 // ── generateScript (Magic Wand) ──────────────────────────────────────────────
 exports.generateScript = onCall({
   cors: true,
