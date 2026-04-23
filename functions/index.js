@@ -286,7 +286,8 @@ OUTPUT: The script only — no title, no label, no explanation.
 If the image is a personal photo, unclear, not commercial, or you are not confident about what to advertise — output exactly: SKIP`;
 
   const payload = {
-    contents: [{ parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }]
+    contents: [{ parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }],
+    generationConfig: { temperature: 1.8 }
   };
 
   try {

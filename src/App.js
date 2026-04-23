@@ -264,6 +264,11 @@ const App = () => {
   const [selectedSpeed, setSelectedSpeed] = useState(SPEEDS[0]);
 
   const [imageScript, setImageScript] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionIdx, setSuggestionIdx] = useState(-1);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [instructionInput, setInstructionInput] = useState('');
+  const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
   const [showMagicWand, setShowMagicWand] = useState(false);
   const [magicPrompt, setMagicPrompt] = useState("");
   const [selectedBoli, setSelectedBoli] = useState(null);
@@ -346,7 +351,15 @@ const App = () => {
   useEffect(() => { setError(null); }, [step]);
 
   useEffect(() => {
-    if (imageScript && imageScript !== 'loading' && !text.trim()) setText(imageScript);
+    if (imageScript && imageScript !== 'loading') {
+      setSuggestions(prev => {
+        if (prev.includes(imageScript)) return prev;
+        const next = [...prev, imageScript];
+        setSuggestionIdx(next.length - 1);
+        return next;
+      });
+      if (!text.trim()) setText(imageScript);
+    }
   }, [imageScript]);
 
   useEffect(() => {
@@ -517,7 +530,7 @@ const App = () => {
   };
 
   const handleSignOut = async () => {
-    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setStep(0); setModalReason("limit"); setShowAuthModal(false); await signOut(auth); setShowProfileDropdown(false); }
+    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); await signOut(auth); setShowProfileDropdown(false); }
     catch (err) { console.error("Sign out failed", err); }
   };
 
@@ -936,7 +949,7 @@ const App = () => {
                 setImgNaturalSize(null);
                 const reader = new FileReader(); reader.onload = (ev) => {
                   const dataUrl = ev.target.result;
-                  setImage(dataUrl); setStep(1);
+                  setImage(dataUrl); setStep(1); setSuggestions([]); setSuggestionIdx(-1); setText('');
                   if (!isVideo) {
                     setImageScript('loading');
                     resizeIfNeeded(dataUrl).then(img =>
@@ -1099,23 +1112,57 @@ const App = () => {
                      <div className="flex items-center px-1">
                         <label className={`font-black text-[10px] uppercase tracking-widest ${t.textBody}`}>Script Master</label>
                      </div>
-                     <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={imageScript === 'loading' ? "✦ Analyzing your image..." : "Type ad text here..."} />
+                     <div className="relative">
+                       <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''} ${suggestions.length > 1 ? 'pb-14' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={imageScript === 'loading' ? "✦ Analyzing your image..." : "Type ad text here..."} />
+                       {suggestions.length > 1 && (
+                         <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-3 pointer-events-none">
+                           <button className="pointer-events-auto w-7 h-7 rounded-full bg-slate-700/80 text-white text-xs flex items-center justify-center hover:bg-slate-600 disabled:opacity-25 transition-all" disabled={suggestionIdx === 0} onClick={() => { const i = suggestionIdx - 1; setSuggestionIdx(i); setText(suggestions[i]); }}>←</button>
+                           <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 pointer-events-none">{suggestionIdx + 1} of {suggestions.length}</span>
+                           <button className="pointer-events-auto w-7 h-7 rounded-full bg-slate-700/80 text-white text-xs flex items-center justify-center hover:bg-slate-600 disabled:opacity-25 transition-all" disabled={suggestionIdx === suggestions.length - 1} onClick={() => { const i = suggestionIdx + 1; setSuggestionIdx(i); setText(suggestions[i]); }}>→</button>
+                         </div>
+                       )}
+                     </div>
                      <div className="flex items-center justify-between px-2 pt-1">
                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{text.trim() ? text.trim().split(/\s+/).length : 0} words · ~{Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / 2.5)}s</span>
                        <button onClick={() => { setMagicPrompt(text || ""); setShowMagicWand(true); }} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Write with AI</button>
                        <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
                      </div>
-                     {imageScript && imageScript !== 'loading' && text === imageScript && (
-                       <p className="text-center text-[9px] font-black uppercase tracking-widest text-indigo-400/60">✦ AI suggested from your image ·{' '}
-                         <button className="underline hover:text-indigo-300 transition-colors" onClick={() => {
-                           setImageScript('loading');
-                           resizeIfNeeded(image).then(img =>
-                             httpsCallable(functions, 'analyzeImage')({ imageBase64: img })
-                               .then(r => { const s = r.data.script || ''; setImageScript(s); if (s) setText(s); })
-                               .catch(() => setImageScript(''))
-                           );
-                         }}>Refresh</button>
-                       </p>
+                     {imageScript && imageScript !== 'loading' && (
+                       <div className="space-y-2 animate-in fade-in">
+                         <div className="flex items-center justify-center gap-3">
+                           <button disabled={isGeneratingSuggestion} onClick={async () => {
+                             setIsGeneratingSuggestion(true);
+                             try {
+                               const img = await resizeIfNeeded(image);
+                               const r = await httpsCallable(functions, 'analyzeImage')({ imageBase64: img });
+                               const s = r.data.script || '';
+                               if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); }
+                             } catch (e) {} finally { setIsGeneratingSuggestion(false); }
+                           }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-300 text-[10px] font-black uppercase tracking-wider hover:border-white/25 disabled:opacity-50 transition-all">
+                             {isGeneratingSuggestion ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} New Suggestion
+                           </button>
+                           <button onClick={() => { setShowInstructions(p => !p); setInstructionInput(''); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-300 text-[10px] font-black uppercase tracking-wider hover:border-white/25 transition-all">
+                             ✎ Add Instructions
+                           </button>
+                         </div>
+                         {showInstructions && (
+                           <div className="flex gap-2 animate-in slide-in-from-top-2">
+                             <input value={instructionInput} onChange={e => setInstructionInput(e.target.value)} onKeyDown={async e => { if (e.key === 'Enter' && instructionInput.trim()) e.target.blur(); }} placeholder="e.g. make it shorter, add Puneri dialect, more urgency..." className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`} />
+                             <button disabled={!instructionInput.trim() || isGeneratingSuggestion} onClick={async () => {
+                               if (!instructionInput.trim()) return;
+                               setIsGeneratingSuggestion(true);
+                               try {
+                                 const fn = httpsCallable(functions, 'generateScript');
+                                 const r = await fn({ prompt: `Rewrite this ad script following this instruction: "${instructionInput}". Current script: "${text}"`, language: selectedLanguage.label, boliPrompt: null });
+                                 const s = r.data.script || '';
+                                 if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); setShowInstructions(false); setInstructionInput(''); }
+                               } catch (e) {} finally { setIsGeneratingSuggestion(false); }
+                             }} className={`px-4 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-40 transition-all ${t.accent}`}>
+                               {isGeneratingSuggestion ? <RefreshCw className="w-4 h-4 animate-spin" /> : '→'}
+                             </button>
+                           </div>
+                         )}
+                       </div>
                      )}
                   </div>
 
@@ -1166,7 +1213,7 @@ const App = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">🎙 Session Complete — 5/5 voices used</span>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => { setLocalVoiceCount(0); setStep(0); setImage(null); setImageScript(null); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); }} className="py-4 bg-slate-800 border-2 border-white/10 text-white rounded-2xl font-black text-sm hover:border-white/25 transition-all">
+                        <button onClick={() => { setLocalVoiceCount(0); setStep(0); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); }} className="py-4 bg-slate-800 border-2 border-white/10 text-white rounded-2xl font-black text-sm hover:border-white/25 transition-all">
                           Start New Session
                         </button>
                         <button onClick={() => setStep(3)} className={`py-4 text-white rounded-2xl font-black text-sm shadow-xl transition-all ${t.accent}`}>
@@ -1315,7 +1362,7 @@ const App = () => {
               <div className="flex flex-col gap-3 md:gap-4 max-w-sm mx-auto px-4">
                  <button onClick={() => handleDownloadClick('video')} className={`px-10 py-5 md:px-12 md:py-6 rounded-[1.5rem] md:rounded-[2rem] font-black text-lg md:text-xl shadow-2xl flex items-center justify-center transition-all ${t.accent} active:scale-95`}>Download Your VocalAd</button>
                  <button onClick={() => handleDownloadClick('audio')} className="px-10 py-4 border-2 border-slate-700 rounded-xl md:rounded-2xl font-black uppercase text-[10px] text-slate-400 flex items-center justify-center gap-3 hover:text-white transition-all"><Music className="w-4 h-4 md:w-5 md:h-5" /> Download Voiceover Only (.wav)</button>
-                 <button onClick={() => { setImage(null); setImageScript(null); setStep(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setLocalVoiceCount(0); }} className="py-4 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:text-slate-300">Start New Project</button>
+                 <button onClick={() => { setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setLocalVoiceCount(0); }} className="py-4 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:text-slate-300">Start New Project</button>
               </div>
             </div>
           )}
