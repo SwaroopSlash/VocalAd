@@ -273,33 +273,42 @@ exports.analyzeImage = onCall({
   const BRAIN_MODEL = "gemini-2.5-flash";
   const BRAIN_FALLBACK = "gemini-2.0-flash";
 
-  const prompt = `You are an expert ad copywriter and voice director. Analyze this image carefully.
+  const prompt = `You are a creative ad strategist. Analyze this image for an AI ad-making tool.
 
 If you clearly identify a product, service, brand, or commercial concept:
-LANGUAGE: Detect the language of any visible text in the image and write the script in that language. If no text is visible or the text is in English, write in English.
-BRAND: Include the brand name ONLY if it is explicitly visible in the image. Never guess or infer a brand name.
-TONE: Write with high energy — excited, punchy, and engaging like a real TV or radio commercial.
-TAGS: Use Gemini TTS expression tags naturally and generously throughout: [excited], [laughs], [short pause], [medium pause], [curious], [whispers], [serious], [sighs]. Tags must always stay in English even if the script is in another language.
-LENGTH: 30-40 words of spoken content.
-OUTPUT: The script only — no title, no label, no explanation.
+
+THEMES: Identify 1 to 3 genuinely distinct advertising angles. Each must be meaningfully different — not variations of the same idea. Format as a short phrase (2-5 words) plus a fitting emoji.
+SCRIPT: Write a 30-40 word spoken commercial script for the FIRST theme only.
+  - Language: detect from visible text in the image; default to English if no text present.
+  - TTS tags (keep in English even if script is in another language): [excited] [laughs] [short pause] [medium pause] [curious] [whispers] [serious] [sighs] — use sparingly.
+  - Brand name: include ONLY if explicitly visible in the image. Never guess or infer.
+OUTPUT: Respond with ONLY this JSON — no markdown fences, no extra text:
+{"themes":[{"emoji":"🏠","label":"home comfort"}],"script":"Your spoken script here.","language":"en"}
 
 If the image is a personal photo, unclear, not commercial, or you are not confident about what to advertise — output exactly: SKIP`;
 
   const payload = {
     contents: [{ parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }],
-    generationConfig: { temperature: 1.8 }
+    generationConfig: { temperature: 1.0 }
   };
 
   try {
     let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
     if (result.error) result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!text || text === 'SKIP') return { script: null };
-    logger.info("IMAGE_ANALYZED", { uid: request.auth.uid });
-    return { script: text };
+    const raw = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!raw || raw === 'SKIP') return { themes: [], script: null };
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed.themes) || !parsed.themes.length || !parsed.script) return { themes: [], script: null };
+      logger.info("IMAGE_ANALYZED", { uid: request.auth.uid, themes: parsed.themes.length });
+      return { themes: parsed.themes, script: parsed.script, language: parsed.language || 'en' };
+    } catch (_) {
+      logger.warn("IMAGE_ANALYSIS_JSON_PARSE_FAILED", { uid: request.auth.uid });
+      return { themes: [], script: raw };
+    }
   } catch (e) {
     logger.warn("IMAGE_ANALYSIS_FAILED", { msg: e.message, uid: request.auth.uid });
-    return { script: null };
+    return { themes: [], script: null };
   }
 });
 

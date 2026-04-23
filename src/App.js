@@ -222,6 +222,14 @@ const App = () => {
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
   const audioTakesRef = useRef([]);
   const touchStartXRef = useRef(null);
+
+  const [imageThemes, setImageThemes] = useState([]);
+  const [selectedTheme, setSelectedTheme] = useState(null);
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [themePickerDismissed, setThemePickerDismissed] = useState(false);
+  const [imageContext, setImageContext] = useState(null);
+  const [showCustomThemeInput, setShowCustomThemeInput] = useState(false);
+  const [customThemeInput, setCustomThemeInput] = useState('');
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
@@ -298,6 +306,16 @@ const App = () => {
 
   useEffect(() => { setError(null); }, [step]);
   useEffect(() => { audioTakesRef.current = audioTakes; }, [audioTakes]);
+
+  useEffect(() => {
+    if (step === 2 && imageThemes.length > 0 && !themePickerDismissed) {
+      setShowThemePicker(true);
+    }
+  }, [step, imageThemes.length, themePickerDismissed]);
+
+  useEffect(() => {
+    if (!showThemePicker) { setShowCustomThemeInput(false); setCustomThemeInput(''); }
+  }, [showThemePicker]);
 
   useEffect(() => {
     if (imageScript && imageScript !== 'loading') {
@@ -406,6 +424,11 @@ const App = () => {
             setAudioTakes([]);
             setSelectedTakeIdx(0);
             setFinalVideoUrl(null);
+            setImageThemes([]);
+            setSelectedTheme(null);
+            setShowThemePicker(false);
+            setThemePickerDismissed(false);
+            setImageContext(null);
           }
         }
         prevUserRef.current = { uid: u.uid, isAnonymous: u.isAnonymous };
@@ -479,7 +502,7 @@ const App = () => {
   };
 
   const handleSignOut = async () => {
-    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); await signOut(auth); setShowProfileDropdown(false); }
+    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setImageThemes([]); setSelectedTheme(null); setShowThemePicker(false); setThemePickerDismissed(false); setImageContext(null); await signOut(auth); setShowProfileDropdown(false); }
     catch (err) { console.error("Sign out failed", err); }
   };
 
@@ -899,11 +922,12 @@ const App = () => {
                 const reader = new FileReader(); reader.onload = (ev) => {
                   const dataUrl = ev.target.result;
                   setImage(dataUrl); setStep(1); setSuggestions([]); setSuggestionIdx(-1); setText('');
+                  setImageThemes([]); setSelectedTheme(null); setImageContext(null); setThemePickerDismissed(false);
                   if (!isVideo) {
                     setImageScript('loading');
                     resizeIfNeeded(dataUrl).then(img =>
                       httpsCallable(functions, 'analyzeImage')({ imageBase64: img })
-                        .then(r => setImageScript(r.data.script || ''))
+                        .then(r => { if (r.data.themes?.length) setImageThemes(r.data.themes); setImageScript(r.data.script || ''); })
                         .catch(() => setImageScript(''))
                     );
                   }
@@ -1084,7 +1108,13 @@ const App = () => {
                        </div>
                      )}
                      <div className="flex items-center justify-between px-2 pt-1">
-                       <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest">{suggestions.length > 1 ? '↔ swipe to browse' : ''}</span>
+                       {selectedTheme ? (
+                         <button onClick={() => setShowThemePicker(true)} className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors">
+                           ↻ {selectedTheme.emoji} {selectedTheme.label}
+                         </button>
+                       ) : (
+                         <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest">{suggestions.length > 1 ? '↔ swipe to browse' : ''}</span>
+                       )}
                        <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
                      </div>
                      {text.trim() && (
@@ -1094,7 +1124,10 @@ const App = () => {
                              setIsGeneratingSuggestion(true);
                              try {
                                let s = '';
-                               if (imageScript && imageScript !== 'loading' && image) {
+                               if (imageContext) {
+                                 const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a fresh creative ad script for: "${imageContext}". Make it a different angle or hook from: "${text.substring(0, 120)}"`, language: selectedLanguage.label, boliPrompt: null });
+                                 s = r.data.script || '';
+                               } else if (imageScript && imageScript !== 'loading' && image) {
                                  const img = await resizeIfNeeded(image);
                                  const r = await httpsCallable(functions, 'analyzeImage')({ imageBase64: img });
                                  s = r.data.script || '';
@@ -1380,6 +1413,81 @@ const App = () => {
           </div>
         );
       })()}
+
+      {showThemePicker && imageThemes.length > 0 && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowThemePicker(false); setThemePickerDismissed(true); }} />
+          <div className="relative w-full max-w-2xl mx-auto bg-slate-950 border-t border-white/10 rounded-t-[2.5rem] p-6 pb-10 animate-in slide-in-from-bottom-6 shadow-2xl">
+            <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto mb-6" />
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Your image looks like...</p>
+            <p className="text-xs text-slate-400 font-medium mb-5">Pick a topic to get an instant focused script.</p>
+            <div className="flex flex-wrap gap-2 mb-5">
+              {imageThemes.map((theme, i) => (
+                <button key={i} onClick={async () => {
+                  setSelectedTheme(theme);
+                  setImageContext(theme.label);
+                  setShowThemePicker(false);
+                  setThemePickerDismissed(true);
+                  if (i > 0) {
+                    setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
+                    try {
+                      const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${theme.label}"`, language: selectedLanguage.label, boliPrompt: null });
+                      setImageScript(r.data.script || '');
+                    } catch (_) { setImageScript(''); }
+                  }
+                }} className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-white/15 bg-slate-900 text-slate-200 text-sm font-black hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-95 transition-all">
+                  <span className="text-xl leading-none">{theme.emoji}</span>
+                  <span>{theme.label}</span>
+                </button>
+              ))}
+              <button onClick={() => setShowCustomThemeInput(p => !p)} className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 text-sm font-black transition-all ${showCustomThemeInput ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300' : 'border-white/10 bg-slate-900 text-slate-500 hover:border-white/25'}`}>
+                ✎ Something else...
+              </button>
+            </div>
+            {showCustomThemeInput && (
+              <div className="flex gap-2 mb-5 animate-in slide-in-from-top-2">
+                <input
+                  autoFocus
+                  value={customThemeInput}
+                  onChange={e => setCustomThemeInput(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key !== 'Enter' || !customThemeInput.trim()) return;
+                    const label = customThemeInput.trim();
+                    const custom = { emoji: '✏️', label };
+                    setSelectedTheme(custom); setImageContext(label);
+                    setShowThemePicker(false); setThemePickerDismissed(true);
+                    setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
+                    try {
+                      const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${label}"`, language: selectedLanguage.label, boliPrompt: null });
+                      setImageScript(r.data.script || '');
+                    } catch (_) { setImageScript(''); }
+                  }}
+                  placeholder="e.g. festive offer, product launch, brand story..."
+                  className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`}
+                />
+                <button disabled={!customThemeInput.trim()} onClick={async () => {
+                  const label = customThemeInput.trim();
+                  if (!label) return;
+                  const custom = { emoji: '✏️', label };
+                  setSelectedTheme(custom); setImageContext(label);
+                  setShowThemePicker(false); setThemePickerDismissed(true);
+                  setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
+                  try {
+                    const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${label}"`, language: selectedLanguage.label, boliPrompt: null });
+                    setImageScript(r.data.script || '');
+                  } catch (_) { setImageScript(''); }
+                }} className={`px-4 py-3 rounded-2xl font-black text-sm disabled:opacity-40 transition-all ${t.accent}`}>→</button>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button onClick={() => { setShowThemePicker(false); setThemePickerDismissed(true); }} className="text-[10px] font-black uppercase tracking-widest text-slate-600 hover:text-slate-400 transition-colors">
+                Skip → use current script
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
