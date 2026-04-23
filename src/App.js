@@ -41,7 +41,6 @@ import {
   Music,
   CreditCard,
   Sparkles,
-  Wand2,
   X,
   Play,
   Pause,
@@ -98,14 +97,10 @@ const LANGUAGES_LIST = [
 ];
 
 const VOICES = [
-  { name: 'Aoede', label: 'Warm Storyteller', gender: 'female', premium: false },
-  { name: 'Charon', label: 'Deep & Bold', gender: 'male', premium: false },
-  { name: 'Fenrir', label: 'Strong Authority', gender: 'male', premium: true },
-  { name: 'Kore', label: 'Versatile Pro', gender: 'female', premium: false },
-  { name: 'Leda', label: 'Clear & Crisp', gender: 'female', premium: true },
-  { name: 'Despina', label: 'Conversational', gender: 'female', premium: true },
-  { name: 'Puck', label: 'Upbeat Energy', gender: 'male', premium: true },
-  { name: 'Sadachbia', label: 'Calm Authority', gender: 'male', premium: true },
+  { name: 'Aoede', label: 'Warm & Narrative', gender: 'female', premium: false },
+  { name: 'Kore', label: 'Clear & Versatile', gender: 'female', premium: false },
+  { name: 'Charon', label: 'Deep & Commanding', gender: 'male', premium: false },
+  { name: 'Fenrir', label: 'Bold & Radio-Ready', gender: 'male', premium: false },
 ];
 
 const TONES = [
@@ -119,50 +114,6 @@ const TONES = [
   { id: 'Trustworthy & Warm', premium: true },
 ];
 
-const BOLI_PERSONAS = [
-  {
-    id: 'kolhapuri', label: 'Kolhapuri', emoji: '🏔', vibe: 'Raw & Bold',
-    prompt: `You are a Kolhapuri Voice Architect. Transform the script into authentic rural South Maharashtra Kolhapuri Marathi.
-PHONETIC RULES: Replace "आहे" with "हाय", replace "काही" with "काय", replace "काय चालले आहे" with "काय म्हणत्याय". STRICTLY avoid formal Marathi.
-SLANG: Naturally weave in लय (lay), पाव्हणं (paavna), गड्या (gadya).
-SCENE: Vibrant open-air Western Maharashtra — rural farm or bustling Kolhapur market. Raw, punchy, assertive "ठसका" energy.
-AUDIO TAGS: Use [excited] for energy peaks, [short pause] for dramatic effect.`
-  },
-  {
-    id: 'puneri', label: 'Puneri', emoji: '🏛', vibe: 'Sharp & Witty',
-    prompt: `You are a Puneri Voice Architect. Transform the script into crisp, intellectual, dryly sarcastic Pune Marathi.
-VOICE: Very clear pronunciation style, formal grammar but with a superior authoritative bite.
-VOCABULARY: Use उगाच (ugach), मुळात (mulaat), कदाचित (kadachit) naturally.
-STYLE: Professional, slightly fast, sophisticated and opinionated. Imply the listener should already know this.
-EXAMPLE PATTERN: Instead of "तुम्ही नक्की येणार का?" write "तुम्ही येणार आहात ना? वेळेवर या म्हणजे झालं."
-AUDIO TAGS: Use [serious] for authority, [short pause] for sarcastic timing.`
-  },
-  {
-    id: 'konkan', label: 'Konkan', emoji: '🌊', vibe: 'Warm & Musical',
-    prompt: `You are a Malvani/Konkan Voice Architect. Transform the script into warm, musical coastal Konkan Marathi.
-PHONETIC RULES: Replace "करतो" with "करतय" (kartyay), replace "आहे" with "आसा" (aasa). Words often end in a staccato way. "च" is softened like "Ts".
-VOCABULARY: Use गोय (thing), भयणी (sister), येवा (come), चाकले (good/tasty) naturally.
-SCENE: Coastal warmth, community feeling, rhythmic like ocean waves.
-AUDIO TAGS: Use [curious] for warm invitations, [short pause] for musical rhythm.`
-  },
-  {
-    id: 'mumbaiya', label: 'Mumbaikar', emoji: '🏙', vibe: 'Street Mix',
-    prompt: `You are a Bambaiya Voice Architect. Transform the script into street-smart Mumbaikar style — a natural blend of Marathi, Hindi, and English.
-STYLE: Mix Hindi verbs with Marathi grammar naturally. Very casual, cool, and energetic.
-VOCABULARY: Use राडा (trouble), विषय (topic/matter), सिन (scene). Use "काय रे" frequently. Use English loanwords for tech/business (property, invest, plan).
-EXAMPLE PATTERN: Instead of "ही जागा गुंतवणुकीसाठी चांगली आहे" write "हा प्लॉट इन्व्हेस्टमेंटसाठी एकदम कडक विषय हाय, विचार कर!"
-AUDIO TAGS: Use [excited] for street energy, [short pause] for cool effect.`
-  },
-  {
-    id: 'vidarbha', label: 'Vidarbha', emoji: '🌾', vibe: 'Earthy & Fast',
-    prompt: `You are a Varhadi Voice Architect. Transform the script into fast-paced earthy Vidarbha (Varhadi) Marathi.
-PHONETIC RULES: Replace "नाही" with "न्हई" (nhayi), replace "आहे" with "हाय" or "ये". The ळ sound often softens to य or ल.
-VOCABULARY: Use बय (expression of surprise), लेकूर (child), कायच्या काय (amazing/nonsense), झोकात (stylish) naturally. End sentences with जी (Ji) for respect.
-EXAMPLE PATTERN: Instead of "हे खूप छान दिसत आहे" write "हे तर लयच झोकात दिसत हाय जी!"
-AUDIO TAGS: Use [excited] for fast earthy energy, [short pause] between the जी endings.`
-  },
-  { id: 'standard', label: 'Standard', emoji: '✍️', vibe: 'Formal', prompt: null },
-];
 
 const VOICE_PREVIEW_PHRASES = {
   'en-IN': "Welcome to VocalAd. Your voice, your brand.",
@@ -269,11 +220,8 @@ const App = () => {
   const [showInstructions, setShowInstructions] = useState(false);
   const [instructionInput, setInstructionInput] = useState('');
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
-  const [showMagicWand, setShowMagicWand] = useState(false);
-  const [magicPrompt, setMagicPrompt] = useState("");
-  const [selectedBoli, setSelectedBoli] = useState(null);
-  const [magicLanguage, setMagicLanguage] = useState(null);
-  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  const audioTakesRef = useRef([]);
+  const touchStartXRef = useRef(null);
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
@@ -349,6 +297,7 @@ const App = () => {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   useEffect(() => { setError(null); }, [step]);
+  useEffect(() => { audioTakesRef.current = audioTakes; }, [audioTakes]);
 
   useEffect(() => {
     if (imageScript && imageScript !== 'loading') {
@@ -447,8 +396,8 @@ const App = () => {
         const prev = prevUserRef.current;
         if (prev && prev.uid !== u.uid) {
           if (prev.isAnonymous) {
-            // Guest just signed up — keep their progress, just reset voice count as sign-up reward
-            setLocalVoiceCount(0);
+            // Guest signed up — keep progress, carry over actual takes count so UI stays consistent
+            setLocalVoiceCount(audioTakesRef.current.length);
           } else {
             // Different named account — full reset
             setLocalVoiceCount(0);
@@ -1109,28 +1058,38 @@ const App = () => {
               </div>
                <div className="flex flex-col gap-6 md:gap-8 text-left">
                   <div className="space-y-3">
-                     <div className="flex items-center px-1">
+                     <div className="flex items-center justify-between px-1">
                         <label className={`font-black text-[10px] uppercase tracking-widest ${t.textBody}`}>Script Master</label>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{text.trim() ? text.trim().split(/\s+/).length : 0} words · ~{Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / 2.5)}s</span>
                      </div>
-                     <div className="relative">
-                       <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''} ${suggestions.length > 1 ? 'pb-14' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={imageScript === 'loading' ? "✦ Analyzing your image..." : "Type ad text here..."} />
-                       {suggestions.length > 1 && (
-                         <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-3 pointer-events-none">
-                           <button className="pointer-events-auto w-7 h-7 rounded-full bg-slate-700/80 text-white text-xs flex items-center justify-center hover:bg-slate-600 disabled:opacity-25 transition-all" disabled={suggestionIdx === 0} onClick={() => { const i = suggestionIdx - 1; setSuggestionIdx(i); setText(suggestions[i]); }}>←</button>
-                           <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 pointer-events-none">{suggestionIdx + 1} of {suggestions.length}</span>
-                           <button className="pointer-events-auto w-7 h-7 rounded-full bg-slate-700/80 text-white text-xs flex items-center justify-center hover:bg-slate-600 disabled:opacity-25 transition-all" disabled={suggestionIdx === suggestions.length - 1} onClick={() => { const i = suggestionIdx + 1; setSuggestionIdx(i); setText(suggestions[i]); }}>→</button>
-                         </div>
-                       )}
+                     <div
+                       onTouchStart={e => { touchStartXRef.current = e.touches[0].clientX; }}
+                       onTouchEnd={e => {
+                         if (touchStartXRef.current === null || suggestions.length <= 1) return;
+                         const diff = touchStartXRef.current - e.changedTouches[0].clientX;
+                         if (Math.abs(diff) > 50) {
+                           if (diff > 0 && suggestionIdx < suggestions.length - 1) { const i = suggestionIdx + 1; setSuggestionIdx(i); setText(suggestions[i]); }
+                           else if (diff < 0 && suggestionIdx > 0) { const i = suggestionIdx - 1; setSuggestionIdx(i); setText(suggestions[i]); }
+                         }
+                         touchStartXRef.current = null;
+                       }}
+                     >
+                       <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={imageScript === 'loading' ? "✦ Analyzing your image..." : "Type ad text here..."} />
                      </div>
-                     <div className="flex items-center justify-between px-2 pt-1">
-                       <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{text.trim() ? text.trim().split(/\s+/).length : 0} words · ~{Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / 2.5)}s</span>
-                       <button onClick={() => { setMagicPrompt(text || ""); setShowMagicWand(true); }} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-500/20 transition-all"><Wand2 className="w-3 h-3" /> Write with AI</button>
+                     {suggestions.length > 1 && (
+                       <div className="flex items-center justify-center gap-3 py-0.5">
+                         <button className="w-7 h-7 rounded-full bg-slate-800 border border-white/10 text-white text-xs flex items-center justify-center hover:bg-slate-700 disabled:opacity-25 transition-all" disabled={suggestionIdx === 0} onClick={() => { const i = suggestionIdx - 1; setSuggestionIdx(i); setText(suggestions[i]); }}>←</button>
+                         <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{suggestionIdx + 1} of {suggestions.length}</span>
+                         <button className="w-7 h-7 rounded-full bg-slate-800 border border-white/10 text-white text-xs flex items-center justify-center hover:bg-slate-700 disabled:opacity-25 transition-all" disabled={suggestionIdx === suggestions.length - 1} onClick={() => { const i = suggestionIdx + 1; setSuggestionIdx(i); setText(suggestions[i]); }}>→</button>
+                       </div>
+                     )}
+                     <div className="flex items-center justify-end px-2 pt-1">
                        <span className={`text-[9px] font-bold uppercase tracking-widest ${localVoiceCount >= 4 ? 'text-amber-500' : 'text-slate-600'}`}>{localVoiceCount}/5 voices used</span>
                      </div>
                      {imageScript && imageScript !== 'loading' && (
                        <div className="space-y-2 animate-in fade-in">
                          <div className="flex items-center justify-center gap-3">
-                           <button disabled={isGeneratingSuggestion} onClick={async () => {
+                           <button disabled={isGeneratingSuggestion || suggestions.length >= 10} onClick={async () => {
                              setIsGeneratingSuggestion(true);
                              try {
                                const img = await resizeIfNeeded(image);
@@ -1138,16 +1097,17 @@ const App = () => {
                                const s = r.data.script || '';
                                if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); }
                              } catch (e) {} finally { setIsGeneratingSuggestion(false); }
-                           }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-300 text-[10px] font-black uppercase tracking-wider hover:border-white/25 disabled:opacity-50 transition-all">
-                             {isGeneratingSuggestion ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} New Suggestion
+                           }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-300 text-[10px] font-black uppercase tracking-wider hover:border-white/25 disabled:opacity-40 transition-all">
+                             {isGeneratingSuggestion ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                             {suggestions.length >= 10 ? '10/10 suggestions used' : 'New Suggestion'}
                            </button>
-                           <button onClick={() => { setShowInstructions(p => !p); setInstructionInput(''); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-300 text-[10px] font-black uppercase tracking-wider hover:border-white/25 transition-all">
+                           <button onClick={() => { setShowInstructions(p => !p); setInstructionInput(''); }} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all ${showInstructions ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-800 border-white/10 text-slate-300 hover:border-white/25'}`}>
                              ✎ Add Instructions
                            </button>
                          </div>
                          {showInstructions && (
                            <div className="flex gap-2 animate-in slide-in-from-top-2">
-                             <input value={instructionInput} onChange={e => setInstructionInput(e.target.value)} onKeyDown={async e => { if (e.key === 'Enter' && instructionInput.trim()) e.target.blur(); }} placeholder="e.g. make it shorter, add Puneri dialect, more urgency..." className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`} />
+                             <input value={instructionInput} onChange={e => setInstructionInput(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setShowInstructions(false); }} placeholder="e.g. make it shorter, add Puneri dialect, more urgency..." className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`} />
                              <button disabled={!instructionInput.trim() || isGeneratingSuggestion} onClick={async () => {
                                if (!instructionInput.trim()) return;
                                setIsGeneratingSuggestion(true);
@@ -1372,69 +1332,6 @@ const App = () => {
       {sessionToast && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-white/10 rounded-2xl px-6 py-3 shadow-2xl animate-in slide-in-from-bottom-4 pointer-events-none">
           <p className="text-white text-xs font-black text-center whitespace-nowrap">{sessionToast}</p>
-        </div>
-      )}
-      {showMagicWand && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/95 backdrop-blur-2xl">
-          <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => { setShowMagicWand(false); setMagicLanguage(null); }} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X className="w-6 h-6" /></button>
-            <div className="flex items-center gap-3">
-              <div className="w-14 h-14 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center"><Wand2 className="w-7 h-7" /></div>
-              <div>
-                <h3 className="text-2xl font-black text-white tracking-tight">Write with AI</h3>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Script Language</p>
-              <select
-                className="w-full p-4 bg-slate-800 border-2 border-slate-700 rounded-2xl outline-none text-white focus:border-indigo-500 font-bold text-sm appearance-none cursor-pointer"
-                value={(magicLanguage || selectedLanguage).id}
-                onChange={e => setMagicLanguage(LANGUAGES_LIST.find(l => l.id === e.target.value))}
-              >
-                {LANGUAGES_LIST.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
-              </select>
-            </div>
-            <textarea className="w-full p-5 bg-slate-800 border-2 border-slate-700 rounded-2xl outline-none text-white focus:border-indigo-500 h-28 text-sm" placeholder="e.g. A shoe brand summer sale targeting young women..." value={magicPrompt} onChange={e => setMagicPrompt(e.target.value)} />
-
-            {/* Boli Mode */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">🗣 Boli Mode</p>
-                <span className="text-[8px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full">TRY BETA</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {BOLI_PERSONAS.map(b => (
-                  <button key={b.id} onClick={() => setSelectedBoli(selectedBoli?.id === b.id ? null : b)}
-                    className={`p-3 rounded-2xl border-2 text-left transition-all ${selectedBoli?.id === b.id ? 'border-amber-500 bg-amber-500/10' : 'border-white/5 bg-white/5 hover:border-white/20'}`}>
-                    <div className="text-lg mb-1">{b.emoji}</div>
-                    <p className="text-[10px] font-black text-white">{b.label}</p>
-                    <p className="text-[8px] text-slate-500 font-bold">{b.vibe}</p>
-                  </button>
-                ))}
-              </div>
-              {selectedBoli && selectedBoli.id !== 'standard' && (
-                <p className="text-[9px] text-amber-400/80 font-bold px-1">✦ Script will be written in {selectedBoli.label} dialect</p>
-              )}
-            </div>
-
-            {authError && <p className="text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{authError}</p>}
-            <button onClick={async () => {
-                if (!magicPrompt.trim()) return;
-                setIsGeneratingScript(true); setAuthError("");
-                try {
-                  const generateScriptFn = httpsCallable(functions, 'generateScript');
-                  const result = await generateScriptFn({
-                    prompt: magicPrompt.trim(),
-                    language: (magicLanguage || selectedLanguage).label,
-                    boliPrompt: selectedBoli?.prompt || null,
-                  });
-                  setText(result.data.script); setShowMagicWand(false); setMagicLanguage(null);
-                } catch (e) { setAuthError(e.message); } finally { setIsGeneratingScript(false); }
-            }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-3">
-              {isGeneratingScript ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-              {isGeneratingScript ? "Drafting..." : "Generate Magic Script"}
-            </button>
-          </div>
         </div>
       )}
 
