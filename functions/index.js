@@ -252,6 +252,7 @@ exports.generateVoice = onCall({
 });
 
 // ── analyzeImage — auto-suggest script from uploaded image ───────────────────
+// ── analyzeImage (Vision & Strategy) ─────────────────────────────────────────
 exports.analyzeImage = onCall({
   cors: true,
   region: "us-central1",
@@ -275,44 +276,55 @@ exports.analyzeImage = onCall({
 
   const prompt = `You are a creative ad strategist. Analyze this image for an AI ad-making tool.
 
-If you clearly identify a product, service, brand, or commercial concept:
+If you clearly identify a product, service, brand, or commercial concept, extract a deep strategy object.
 
-THEMES: Identify 1 to 3 genuinely distinct advertising angles. Each must be meaningfully different — not variations of the same idea. Format as a short phrase (2-5 words) plus a fitting emoji.
-SCRIPT: Write a 30-40 word spoken commercial script for the FIRST theme only.
-  - Language: detect from visible text in the image; default to English if no text present.
-  - TTS tags (keep in English even if script is in another language): [excited] [laughs] [short pause] [medium pause] [curious] [whispers] [serious] [sighs] — use sparingly.
-  - Brand name: include ONLY if explicitly visible in the image. Never guess or infer.
-OUTPUT: Respond with ONLY this JSON — no markdown fences, no extra text:
-{"themes":[{"emoji":"🏠","label":"home comfort"}],"script":"Your spoken script here.","language":"en"}
+RESPONSE SCHEMA (JSON):
+{
+  "primaryMemory": {
+    "productName": "Explicit or inferred name",
+    "coreValueProp": "Main selling point",
+    "visualContext": "Scene description",
+    "targetAudience": "Who is this for?",
+    "detectedLanguage": "en-IN or hi-IN etc."
+  },
+  "themes": [{"emoji": "string", "label": "string"}],
+  "script": "Write a 30-40 word spoken commercial script for the FIRST theme.",
+  "language": "ISO code"
+}
 
-If the image is a personal photo, unclear, not commercial, or you are not confident about what to advertise — output exactly: SKIP`;
+If the image is not commercial, output: {"skip": true}`;
 
   const payload = {
     contents: [{ parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }],
-    generationConfig: { temperature: 1.0 }
+    generationConfig: { 
+      temperature: 1.0,
+      response_mime_type: "application/json"
+    }
   };
 
   try {
     let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
     if (result.error) result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
     const raw = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!raw || raw === 'SKIP') return { themes: [], script: null };
-    try {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed.themes) || !parsed.themes.length || !parsed.script) return { themes: [], script: null };
-      logger.info("IMAGE_ANALYZED", { uid: request.auth.uid, themes: parsed.themes.length });
-      return { themes: parsed.themes, script: parsed.script, language: parsed.language || 'en' };
-    } catch (_) {
-      logger.warn("IMAGE_ANALYSIS_JSON_PARSE_FAILED", { uid: request.auth.uid });
-      return { themes: [], script: raw };
-    }
+    if (!raw) return { themes: [], script: null };
+    
+    const parsed = JSON.parse(raw);
+    if (parsed.skip) return { themes: [], script: null };
+    
+    logger.info("IMAGE_ANALYZED_V3", { uid: request.auth.uid, product: parsed.primaryMemory?.productName });
+    return { 
+      themes: parsed.themes || [], 
+      script: parsed.script, 
+      language: parsed.language || 'en',
+      primaryMemory: parsed.primaryMemory 
+    };
   } catch (e) {
     logger.warn("IMAGE_ANALYSIS_FAILED", { msg: e.message, uid: request.auth.uid });
     return { themes: [], script: null };
   }
 });
 
-// ── generateScript (Magic Wand) ──────────────────────────────────────────────
+// ── generateScript (Stateful Engine) ──────────────────────────────────────────
 exports.generateScript = onCall({
   cors: true,
   region: "us-central1",
@@ -321,7 +333,7 @@ exports.generateScript = onCall({
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to generate script.");
 
-  const { prompt, language, boliPrompt, lightweight, constraints, history, userInstruction, tone } = request.data;
+  const { prompt, language, boliPrompt, lightweight, constraints, history, userInstruction, tone, primaryMemory } = request.data;
   if (!prompt?.trim()) throw new HttpsError("invalid-argument", "Prompt is required.");
 
   const apiKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
@@ -329,61 +341,46 @@ exports.generateScript = onCall({
   const BRAIN_FALLBACK = "gemini-2.0-flash";
   const LIGHT_MODEL = "gemini-2.0-flash-lite";
 
-  // Lightweight path: meta-analysis calls (nudge chip JSON, convergence synthesis)
-  // Uses cheaper model, skips script formatting, returns raw text for frontend to parse
   if (lightweight) {
-    const payload = { contents: [{ parts: [{ text: prompt }] }] };
+    const payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: "application/json" } };
     let result = await callGeminiRest(LIGHT_MODEL, payload, apiKey);
     if (result.error) result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
-    if (result.error) throw new HttpsError("internal", result.error.message);
-    const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```json|```/g, "").trim();
-    if (!script) throw new HttpsError("internal", "AI returned empty response.");
-    logger.info("LIGHT_SCRIPT_GENERATED", { uid: request.auth.uid });
+    const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     return { script };
   }
 
   const wordCount = prompt.trim().split(/\s+/).length;
   const targetWords = wordCount <= 10 ? 40 : Math.round(wordCount * 1.2);
-  const dialectLine = boliPrompt ? `Dialect instruction: ${boliPrompt}` : '';
+  
+  const contextAnchor = primaryMemory ? `
+BACKGROUND CONTEXT (DO NOT REPEAT LITERALLY, BUT USE AS SOURCE OF TRUTH):
+- Product: ${primaryMemory.productName}
+- Value Prop: ${primaryMemory.coreValueProp}
+- Scene: ${primaryMemory.visualContext}
+- Audience: ${primaryMemory.targetAudience}
+` : '';
 
-  // Cumulative prompt — language before brief so model doesn't anchor to brief language first
   const lines = [
     `You are an expert Indian commercial voiceover scriptwriter.`,
-    `TTS TAGS — REQUIRED IN EVERY SCRIPT: You MUST use these expression markers throughout. Place them before sentences, mid-sentence, and at transitions. Do not skip them.\nExample output: "[excited] Yeh offer sirf aaj hai! [short pause] Call karo abhi — [excited] flat 50% off milega! [medium pause] Stock limited hai!"`,
-    `TTS tags MUST always be written in English even if the rest of the script is in another language.`,
-    `NEVER include sound effects, music cues, stage directions, or physical actions.`,
-    language ? `LANGUAGE — CRITICAL: Write the ENTIRE script ONLY in ${language}. Every single word must be in ${language}. Do NOT use English or any other language in the spoken content.` : '',
+    `TTS TAGS — REQUIRED: Use [excited], [laughs], [short pause], [medium pause], [curious], [whispers], [serious], [sighs].`,
+    language ? `LANGUAGE: Write ONLY in ${language}.` : '',
     tone ? `Tone: ${tone}` : '',
-    `Brief: "${prompt.trim()}"`,
-    dialectLine,
+    contextAnchor,
+    `Current Angle/Topic: "${prompt.trim()}"`,
     Array.isArray(constraints) && constraints.length ? `Requirements: ${constraints.join(' · ')}` : '',
-    Array.isArray(history) && history.length
-      ? `Already written — explore a completely different angle:\n${history.slice(-3).map((h, i) => `${i + 1}. "${String(h).substring(0, 100)}"`).join('\n')}`
-      : '',
-    `Write a spoken commercial script of approximately ${targetWords} words.`,
-    `Output ONLY the spoken script — no title, no label, no explanation.`,
-    userInstruction?.trim()
-      ? `\n⚠ USER INSTRUCTION — HIGHEST PRIORITY, overrides everything above: "${userInstruction.trim()}"`
-      : '',
+    Array.isArray(history) && history.length ? `Avoid these previous scripts:\n${history.slice(-2).join('\n')}` : '',
+    `Write a spoken commercial script (~${targetWords} words). OUTPUT ONLY THE SCRIPT.`,
+    userInstruction?.trim() ? `\n⚠ USER INSTRUCTION (HIGHEST PRIORITY): "${userInstruction.trim()}"` : '',
   ].filter(Boolean).join('\n');
 
-  // thinkingBudget: 0 disables chain-of-thought tokens on gemini-2.5-flash
-  // Ad scripts don't need deep reasoning — cuts latency ~40%
   const payload = {
     contents: [{ parts: [{ text: lines }] }],
     generationConfig: { thinkingConfig: { thinkingBudget: 0 } }
   };
+  
   let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
-  if (result.error) {
-    logger.warn("SCRIPT_PRIMARY_FAILED", { msg: result.error.message });
-    const fallbackPayload = { contents: [{ parts: [{ text: lines }] }] };
-    result = await callGeminiRest(BRAIN_FALLBACK, fallbackPayload, apiKey);
-    if (result.error) throw new HttpsError("internal", result.error.message);
-  }
-
-  const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```/g, "").trim();
-  if (!script) throw new HttpsError("internal", "AI returned empty script. Try a more descriptive prompt.");
-
-  logger.info("SCRIPT_GENERATED", { uid: request.auth.uid });
+  if (result.error) result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
+  
+  const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
   return { script };
 });
