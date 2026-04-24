@@ -191,6 +191,16 @@ const detectIntent = (text) => {
   return result;
 };
 
+const SKIP_WORDS = new Set(['a','an','the','it','to','in','on','for','and','or','with','make','write','add','use','be','change','keep','more','less','please','i','want','need','try','let','give','put','do','get','set']);
+const summarizeConstraint = (instruction) => {
+  const intent = detectIntent(instruction);
+  if (intent.language) return intent.language.label.split(' (')[0];
+  if (intent.tone) return intent.tone.replace(' (Sale)', '').replace(' & Warm', '');
+  const words = instruction.trim().split(/\s+/).filter(w => w.length > 1 && !SKIP_WORDS.has(w.toLowerCase()));
+  const label = words.slice(0, 2).join(' ');
+  return label ? (label.charAt(0).toUpperCase() + label.slice(1)) : instruction.substring(0, 14);
+};
+
 const resizeIfNeeded = (dataUrl) => new Promise((resolve) => {
   const base64 = dataUrl.split(',')[1] || '';
   if (base64.length * 0.75 <= 5 * 1024 * 1024) { resolve(dataUrl); return; }
@@ -1139,7 +1149,7 @@ const App = () => {
                         <label className={`font-black text-[10px] uppercase tracking-widest ${t.textBody}`}>Script Master</label>
                         <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{text.trim() ? text.trim().split(/\s+/).length : 0} words · ~{Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / 2.5)}s</span>
                      </div>
-                     <div
+                     <div className="relative"
                        onTouchStart={e => { touchStartXRef.current = e.touches[0].clientX; }}
                        onTouchEnd={e => {
                          if (touchStartXRef.current === null || suggestions.length <= 1) return;
@@ -1152,6 +1162,12 @@ const App = () => {
                        }}
                      >
                        <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={imageScript === 'loading' ? "✦ Analyzing your image..." : "Type ad text here..."} />
+                       {suggestions.length > 1 && suggestionIdx < suggestions.length - 1 && (
+                         <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-slate-950/80 to-transparent pointer-events-none rounded-r-[2rem]" />
+                       )}
+                       {suggestions.length > 1 && suggestionIdx > 0 && (
+                         <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-slate-950/80 to-transparent pointer-events-none rounded-l-[2rem]" />
+                       )}
                      </div>
                      <div className="flex items-center px-2 pt-1 gap-2">
                        <div className="w-24 shrink-0">
@@ -1161,28 +1177,25 @@ const App = () => {
                            </button>
                          )}
                        </div>
-                       <div className="flex-1 text-center">
-                         {suggestions.length > 1 && <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest">↔ swipe to browse</span>}
+                       <div className="flex-1 flex items-center justify-center gap-1.5">
+                         {suggestions.length > 1 && suggestions.map((_, i) => (
+                           <button key={i} onClick={() => { setSuggestionIdx(i); setText(suggestions[i]); }} className={`h-1.5 rounded-full transition-all duration-300 ${i === suggestionIdx ? 'bg-indigo-400 w-5' : 'bg-slate-700 w-1.5 hover:bg-slate-500'}`} />
+                         ))}
                        </div>
                        <div className="w-24 shrink-0 text-right">
                          {suggestions.length > 0 && <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{suggestionIdx + 1}/{suggestions.length} scripts</span>}
                        </div>
                      </div>
-                     {(sessionCtx.language || sessionCtx.tone || sessionCtx.constraints.length > 0) && (
+                     {(sessionCtx.tone || sessionCtx.constraints.length > 0) && (
                        <div className="flex flex-wrap gap-1.5 px-2 pt-1">
-                         {sessionCtx.language && (
-                           <button onClick={() => setSessionCtx(prev => ({ ...prev, language: null }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-[9px] font-black uppercase tracking-wider hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
-                             🌐 {sessionCtx.language.label.split(' (')[0]} ×
-                           </button>
-                         )}
                          {sessionCtx.tone && (
                            <button onClick={() => setSessionCtx(prev => ({ ...prev, tone: null }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[9px] font-black uppercase tracking-wider hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
-                             ⚡ {sessionCtx.tone} ×
+                             ⚡ {sessionCtx.tone.replace(' (Sale)', '').replace(' & Warm', '')} ×
                            </button>
                          )}
                          {sessionCtx.constraints.map((c, i) => (
-                           <button key={i} onClick={() => setSessionCtx(prev => ({ ...prev, constraints: prev.constraints.filter((_, j) => j !== i) }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-700/50 border border-white/10 text-slate-400 text-[9px] font-bold hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
-                             {c.length > 22 ? c.substring(0, 22) + '…' : c} ×
+                           <button key={i} onClick={() => setSessionCtx(prev => ({ ...prev, constraints: prev.constraints.filter((_, j) => j !== i) }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/25 text-indigo-300 text-[9px] font-black uppercase tracking-wider hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
+                             {c.label} ×
                            </button>
                          ))}
                        </div>
@@ -1206,7 +1219,7 @@ const App = () => {
                                  prompt: brief,
                                  language: (sessionCtx.language || selectedLanguage).label,
                                  boliPrompt: null,
-                                 constraints: sessionCtx.constraints,
+                                 constraints: sessionCtx.constraints.map(c => c.text),
                                  history: newHistory,
                                  tone: sessionCtx.tone || selectedTone,
                                });
@@ -1237,7 +1250,8 @@ const App = () => {
                                  setSelectedTone(intent.tone);
                                  updatedCtx = { ...updatedCtx, tone: intent.tone };
                                }
-                               const newConstraint = instructionInput.trim();
+                               const constraintText = instructionInput.trim();
+                               const newConstraint = { text: constraintText, label: summarizeConstraint(constraintText) };
                                updatedCtx = { ...updatedCtx, constraints: [...updatedCtx.constraints, newConstraint].slice(-5) };
                                setSessionCtx(updatedCtx);
                                setIsGeneratingSuggestion(true);
@@ -1248,7 +1262,6 @@ const App = () => {
                                      || (text.trim().split(/\s+/).length <= 12 ? text.trim() : null);
                                  }
                                  const brief = adTopicRef.current || "the advertised product";
-                                 // Include current script as rewrite reference so model understands what to change
                                  const scriptContext = text.trim().split(/\s+/).length > 8
                                    ? `\n(Rewrite this script applying the instruction above: "${text.trim().substring(0, 200)}")`
                                    : '';
@@ -1256,10 +1269,10 @@ const App = () => {
                                    prompt: brief,
                                    language: (updatedCtx.language || selectedLanguage).label,
                                    boliPrompt: null,
-                                   constraints: updatedCtx.constraints,
+                                   constraints: updatedCtx.constraints.map(c => c.text),
                                    history: updatedCtx.history,
                                    tone: updatedCtx.tone || selectedTone,
-                                   userInstruction: `${newConstraint}${scriptContext}`,
+                                   userInstruction: `${constraintText}${scriptContext}`,
                                  });
                                  const s = r.data.script || '';
                                  if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); setShowInstructions(false); setInstructionInput(''); }
