@@ -346,24 +346,24 @@ exports.generateScript = onCall({
   const targetWords = wordCount <= 10 ? 40 : Math.round(wordCount * 1.2);
   const dialectLine = boliPrompt ? `Dialect instruction: ${boliPrompt}` : '';
 
-  // Cumulative prompt — layers stack in priority order, userInstruction always last (LLMs weight recency)
+  // Cumulative prompt — language before brief so model doesn't anchor to brief language first
   const lines = [
     `You are an expert Indian commercial voiceover scriptwriter.`,
-    `Style: High-energy Indian radio/TV commercial. Punchy, rhythmic, natural repetition for emphasis. Use TTS tags [excited], [short pause], [medium pause], [serious], [whispers], [laughs], [curious] frequently and naturally. Think "Tvara kara... abhi hi call karein..." voiceover energy — never flat prose.`,
-    `TTS tags must always stay in English even if the script is in another language.`,
-    `NEVER include sound effects, music cues, physical actions, or scene directions.`,
-    `Brief: "${prompt.trim()}"`,
-    language ? `Language: ${language} — write entirely in this language.` : '',
+    `TTS TAGS — REQUIRED IN EVERY SCRIPT: You MUST use these expression markers throughout. Place them before sentences, mid-sentence, and at transitions. Do not skip them.\nExample output: "[excited] Yeh offer sirf aaj hai! [short pause] Call karo abhi — [excited] flat 50% off milega! [medium pause] Stock limited hai!"`,
+    `TTS tags MUST always be written in English even if the rest of the script is in another language.`,
+    `NEVER include sound effects, music cues, stage directions, or physical actions.`,
+    language ? `LANGUAGE — CRITICAL: Write the ENTIRE script ONLY in ${language}. Every single word must be in ${language}. Do NOT use English or any other language in the spoken content.` : '',
     tone ? `Tone: ${tone}` : '',
+    `Brief: "${prompt.trim()}"`,
     dialectLine,
     Array.isArray(constraints) && constraints.length ? `Requirements: ${constraints.join(' · ')}` : '',
     Array.isArray(history) && history.length
-      ? `Already tried — these scripts were generated; explore completely different angles:\n${history.slice(-3).map((h, i) => `${i + 1}. "${String(h).substring(0, 100)}"`).join('\n')}`
+      ? `Already written — explore a completely different angle:\n${history.slice(-3).map((h, i) => `${i + 1}. "${String(h).substring(0, 100)}"`).join('\n')}`
       : '',
     `Write a spoken commercial script of approximately ${targetWords} words.`,
-    `Output the script only — no title, no labels, no explanation.`,
+    `Output ONLY the spoken script — no title, no label, no explanation.`,
     userInstruction?.trim()
-      ? `\n⚠ USER INSTRUCTION — highest priority, overrides everything above: "${userInstruction.trim()}"`
+      ? `\n⚠ USER INSTRUCTION — HIGHEST PRIORITY, overrides everything above: "${userInstruction.trim()}"`
       : '',
   ].filter(Boolean).join('\n');
 

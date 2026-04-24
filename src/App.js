@@ -253,6 +253,7 @@ const App = () => {
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
   const audioTakesRef = useRef([]);
   const touchStartXRef = useRef(null);
+  const adTopicRef = useRef(null); // stores the ad topic (never the full script)
 
   const [imageThemes, setImageThemes] = useState([]);
   const [selectedTheme, setSelectedTheme] = useState(null);
@@ -468,6 +469,7 @@ const App = () => {
             setImageContext(null);
             setSessionCtx({ language: null, tone: null, constraints: [], history: [] });
             setSuggestionTapCount(0);
+            adTopicRef.current = null;
           }
         }
         prevUserRef.current = { uid: u.uid, isAnonymous: u.isAnonymous };
@@ -541,7 +543,7 @@ const App = () => {
   };
 
   const handleSignOut = async () => {
-    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setImageThemes([]); setSelectedTheme(null); setShowThemePicker(false); setThemePickerDismissed(false); setImageContext(null); setSessionCtx({ language: null, tone: null, constraints: [], history: [] }); setSuggestionTapCount(0); await signOut(auth); setShowProfileDropdown(false); }
+    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setImageThemes([]); setSelectedTheme(null); setShowThemePicker(false); setThemePickerDismissed(false); setImageContext(null); setSessionCtx({ language: null, tone: null, constraints: [], history: [] }); setSuggestionTapCount(0); adTopicRef.current = null; await signOut(auth); setShowProfileDropdown(false); }
     catch (err) { console.error("Sign out failed", err); }
   };
 
@@ -967,11 +969,18 @@ const App = () => {
                   const dataUrl = ev.target.result;
                   setImage(dataUrl); setStep(1); setSuggestions([]); setSuggestionIdx(-1); setText('');
                   setImageThemes([]); setSelectedTheme(null); setImageContext(null); setThemePickerDismissed(false);
+                  adTopicRef.current = null;
                   if (!isVideo) {
                     setImageScript('loading');
                     resizeIfNeeded(dataUrl).then(img =>
                       httpsCallable(functions, 'analyzeImage')({ imageBase64: img })
-                        .then(r => { if (r.data.themes?.length) setImageThemes(r.data.themes); setImageScript(r.data.script || ''); })
+                        .then(r => {
+                          if (r.data.themes?.length) {
+                            setImageThemes(r.data.themes);
+                            if (!adTopicRef.current) adTopicRef.current = r.data.themes[0].label;
+                          }
+                          setImageScript(r.data.script || '');
+                        })
                         .catch(() => setImageScript(''))
                     );
                   }
@@ -1187,7 +1196,12 @@ const App = () => {
                              setSuggestionTapCount(prev => prev + 1);
                              setIsGeneratingSuggestion(true);
                              try {
-                               const brief = imageContext || (imageScript && imageScript !== 'loading' ? imageScript.substring(0, 150) : text.substring(0, 150));
+                               if (!adTopicRef.current) {
+                                 adTopicRef.current = imageContext
+                                   || (imageThemes.length > 0 ? imageThemes[0].label : null)
+                                   || (text.trim().split(/\s+/).length <= 12 ? text.trim() : null);
+                               }
+                               const brief = adTopicRef.current || "the advertised product";
                                const r = await httpsCallable(functions, 'generateScript')({
                                  prompt: brief,
                                  language: (sessionCtx.language || selectedLanguage).label,
@@ -1228,7 +1242,16 @@ const App = () => {
                                setSessionCtx(updatedCtx);
                                setIsGeneratingSuggestion(true);
                                try {
-                                 const brief = imageContext || (imageScript && imageScript !== 'loading' ? imageScript.substring(0, 150) : text.substring(0, 150));
+                                 if (!adTopicRef.current) {
+                                   adTopicRef.current = imageContext
+                                     || (imageThemes.length > 0 ? imageThemes[0].label : null)
+                                     || (text.trim().split(/\s+/).length <= 12 ? text.trim() : null);
+                                 }
+                                 const brief = adTopicRef.current || "the advertised product";
+                                 // Include current script as rewrite reference so model understands what to change
+                                 const scriptContext = text.trim().split(/\s+/).length > 8
+                                   ? `\n(Rewrite this script applying the instruction above: "${text.trim().substring(0, 200)}")`
+                                   : '';
                                  const r = await httpsCallable(functions, 'generateScript')({
                                    prompt: brief,
                                    language: (updatedCtx.language || selectedLanguage).label,
@@ -1236,7 +1259,7 @@ const App = () => {
                                    constraints: updatedCtx.constraints,
                                    history: updatedCtx.history,
                                    tone: updatedCtx.tone || selectedTone,
-                                   userInstruction: newConstraint,
+                                   userInstruction: `${newConstraint}${scriptContext}`,
                                  });
                                  const s = r.data.script || '';
                                  if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); setShowInstructions(false); setInstructionInput(''); }
@@ -1503,6 +1526,7 @@ const App = () => {
                 <button key={i} onClick={async () => {
                   setSelectedTheme(theme);
                   setImageContext(theme.label);
+                  adTopicRef.current = theme.label;
                   setShowThemePicker(false);
                   setThemePickerDismissed(true);
                   // Always clear previous suggestions — they belonged to a different theme context
@@ -1517,11 +1541,11 @@ const App = () => {
                     const savedText = text;
                     setImageScript('loading');
                     try {
-                      const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${theme.label}"`, language: selectedLanguage.label, boliPrompt: null });
+                      const r = await httpsCallable(functions, 'generateScript')({ prompt: theme.label, language: selectedLanguage.label, boliPrompt: null });
                       setImageScript(r.data.script || '');
                     } catch (_) {
                       setImageScript(''); setText(savedText);
-                      setSelectedTheme(null); setImageContext(null);
+                      setSelectedTheme(null); setImageContext(null); adTopicRef.current = null;
                     }
                   }
                 }} className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-white/15 bg-slate-900 text-slate-200 text-sm font-black hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-95 transition-all">
@@ -1544,13 +1568,13 @@ const App = () => {
                     const label = customThemeInput.trim();
                     const custom = { emoji: '✏️', label };
                     const savedText = text;
-                    setSelectedTheme(custom); setImageContext(label);
+                    setSelectedTheme(custom); setImageContext(label); adTopicRef.current = label;
                     setShowThemePicker(false); setThemePickerDismissed(true);
                     setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
                     try {
-                      const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${label}"`, language: selectedLanguage.label, boliPrompt: null });
+                      const r = await httpsCallable(functions, 'generateScript')({ prompt: label, language: selectedLanguage.label, boliPrompt: null });
                       setImageScript(r.data.script || '');
-                    } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); }
+                    } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); adTopicRef.current = null; }
                   }}
                   placeholder="e.g. festive offer, product launch, brand story..."
                   className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`}
@@ -1560,13 +1584,13 @@ const App = () => {
                   if (!label) return;
                   const custom = { emoji: '✏️', label };
                   const savedText = text;
-                  setSelectedTheme(custom); setImageContext(label);
+                  setSelectedTheme(custom); setImageContext(label); adTopicRef.current = label;
                   setShowThemePicker(false); setThemePickerDismissed(true);
                   setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
                   try {
-                    const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a 35-word spoken commercial script for: "${label}"`, language: selectedLanguage.label, boliPrompt: null });
+                    const r = await httpsCallable(functions, 'generateScript')({ prompt: label, language: selectedLanguage.label, boliPrompt: null });
                     setImageScript(r.data.script || '');
-                  } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); }
+                  } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); adTopicRef.current = null; }
                 }} className={`px-4 py-3 rounded-2xl font-black text-sm disabled:opacity-40 transition-all ${t.accent}`}>→</button>
               </div>
             )}
