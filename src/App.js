@@ -270,6 +270,8 @@ const App = () => {
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [themePickerDismissed, setThemePickerDismissed] = useState(false);
   const [imageContext, setImageContext] = useState(null);
+  const [showCustomThemeInput, setShowCustomThemeInput] = useState(false);
+  const [customThemeInput, setCustomThemeInput] = useState('');
   const [sessionCtx, setSessionCtx] = useState({ language: null, tone: null, constraints: [], history: [] });
   const [intentToast, setIntentToast] = useState(null);
   const [suggestionTapCount, setSuggestionTapCount] = useState(0);
