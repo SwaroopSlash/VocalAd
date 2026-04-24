@@ -1022,6 +1022,7 @@ const App = () => {
                           }
                           if (r.data.language) {
                             const detectedLang = LANGUAGES_LIST.find(l => l.id.startsWith(r.data.language)) || selectedLanguage;
+                            setSelectedLanguage(detectedLang);
                             setSessionCtx(prev => ({ ...prev, language: detectedLang }));
                           }
                           if (r.data.primaryMemory) {
@@ -1317,7 +1318,21 @@ const App = () => {
                                    primaryMemory: updatedCtx.primaryMemory
                                  });
                                  const s = r.data.script || '';
-                                 if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); setShowInstructions(false); setInstructionInput(''); }
+                                 if (s) {
+                                   setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; });
+                                   setText(s);
+                                   if (r.data.updatedMemory) {
+                                      setSessionCtx(prev => ({
+                                        ...prev,
+                                        primaryMemory: {
+                                          ...prev.primaryMemory,
+                                          ...r.data.updatedMemory,
+                                          hardFacts: { ...prev.primaryMemory?.hardFacts, ...r.data.updatedMemory.hardFacts }
+                                        }
+                                      }));
+                                   }
+                                   setShowInstructions(false); setInstructionInput('');
+                                 }
                                } catch (e) {} finally { setIsGeneratingSuggestion(false); }
                              }} className={`px-4 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-40 transition-all ${t.accent}`}>
                                {isGeneratingSuggestion ? <RefreshCw className="w-4 h-4 animate-spin" /> : '→'}

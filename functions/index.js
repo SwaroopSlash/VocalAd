@@ -274,29 +274,29 @@ exports.analyzeImage = onCall({
   const BRAIN_MODEL = "gemini-2.5-flash";
   const BRAIN_FALLBACK = "gemini-2.0-flash";
 
-  const prompt = `You are a creative ad strategist. Analyze this image for an AI ad-making tool.
+  const prompt = `You are a Principal AI Strategist. Perform a forensic analysis of this image.
 
-Your goal is to perform a FULL VISUAL INVENTORY. This is the "Source of Truth" for all future ads.
+1. CATEGORIZE: Identify the Campaign Type (e.g., Political Election, Retail Sale, Event Invite, Brand Story).
+2. EXTRACT HARD FACTS: Find and list every specific detail: Brand/Name, Discount %, Price, Phone Numbers, Address, Dates.
+3. DETECT LANGUAGE: Identify the primary language of the text.
 
-1. Extract visible text and brand names (ONLY if clearly legible).
-2. Identify the specific product/service.
-3. Determine "Visual Complexity": 
-   - LOW: Minimal text, simple scene (e.g. just a person, a landscape).
-   - HIGH: Detailed product, lots of visible text, complex features.
-
-RESPONSE SCHEMA (JSON):
+RESPONSE SCHEMA (STRICT JSON):
 {
   "primaryMemory": {
-    "productName": "Detailed name",
-    "coreValueProp": "Primary selling point",
-    "visualContext": "Deep description of scene/vibe",
-    "targetAudience": "Who is this for?",
-    "extractedText": "All text found",
-    "detectedLanguage": "Full name",
-    "visualComplexity": "HIGH or LOW"
+    "campaignType": "e.g. Political/Retail",
+    "brandName": "Name or 'Unknown'",
+    "hardFacts": {
+      "offers": "e.g. 50% off",
+      "contact": "Phone/Email",
+      "location": "Address",
+      "specifics": "Any other key labels"
+    },
+    "visualVibe": "Description of scene",
+    "complexity": "HIGH/LOW",
+    "detectedLanguage": "Full language name"
   },
   "themes": [{"emoji": "string", "label": "string"}],
-  "script": "Write a spoken commercial script. If LOW complexity, keep it punchy (15-20 words). If HIGH, make it rich (50-60 words).",
+  "script": "Write a 40-50 word script using ALL Hard Facts extracted above.",
   "language": "ISO code"
 }
 
@@ -358,20 +358,18 @@ exports.generateScript = onCall({
   }
 
   const wordCount = prompt.trim().split(/\s+/).length;
-  // ADAPTIVE WORD COUNT: 
-  // Simple images (LOW) get short, punchy scripts (~20 words).
-  // Complex images (HIGH) get rich, detailed scripts (~50 words).
-  const baseWords = (primaryMemory?.visualComplexity === 'HIGH') ? 50 : 20;
+  const baseWords = (primaryMemory?.complexity === 'HIGH') ? 50 : 25;
   const targetWords = wordCount <= 10 ? baseWords : Math.round(wordCount * 1.2);
   
   const contextAnchor = primaryMemory ? `
-SOURCE OF TRUTH (STRICT GROUNDING):
-- Product: ${primaryMemory.productName}
-- Context: ${primaryMemory.visualContext}
-- Extracted Text: ${primaryMemory.extractedText || 'None'}
-- Complexity: ${primaryMemory.visualComplexity}
+CORE AD MEMORY (SOURCE OF TRUTH):
+- CAMPAIGN: ${primaryMemory.campaignType}
+- BRAND: ${primaryMemory.brandName}
+- HARD FACTS: ${JSON.stringify(primaryMemory.hardFacts)}
+- VIBE: ${primaryMemory.visualVibe}
 
-STRICT RULE: Do NOT assume features or details not mentioned above. If complexity is LOW, keep script extremely brief and punchy.` : '';
+STRICT RULE: Include ALL hard facts naturally.
+` : '';
 
   const lines = [
     `You are an expert Indian commercial voiceover scriptwriter.`,
@@ -379,21 +377,32 @@ STRICT RULE: Do NOT assume features or details not mentioned above. If complexit
     language ? `LANGUAGE: Write ONLY in ${language}.` : '',
     tone ? `Tone: ${tone}` : '',
     contextAnchor,
-    `Current Angle/Topic: "${prompt.trim()}"`,
+    `Current Angle: "${prompt.trim()}"`,
+    userInstruction ? `\n⚠ USER INSTRUCTION (SUPREME PRIORITY): "${userInstruction.trim()}"\nIf the user instruction changes a brand name, phone, or fact, RECONCILE the memory.` : '',
     Array.isArray(constraints) && constraints.length ? `Requirements: ${constraints.join(' · ')}` : '',
-    Array.isArray(history) && history.length ? `Avoid these previous scripts:\n${history.slice(-2).join('\n')}` : '',
-    `Write a spoken commercial script (~${targetWords} words). OUTPUT ONLY THE SCRIPT.`,
-    userInstruction?.trim() ? `\n⚠ USER INSTRUCTION (HIGHEST PRIORITY): "${userInstruction.trim()}"` : '',
+    `Write a spoken commercial script (~${targetWords} words).`,
+    userInstruction ? `Since there is a User Instruction, return a JSON object: {"script": "the text", "updatedMemory": {"brandName": "...", "hardFacts": {"offers": "...", "contact": "..."}}}. Only include fields that CHANGED.` : `OUTPUT ONLY THE SCRIPT TEXT. No JSON.`
   ].filter(Boolean).join('\n');
 
   const payload = {
     contents: [{ parts: [{ text: lines }] }],
-    generationConfig: { thinkingConfig: { thinkingBudget: 0 } }
+    generationConfig: { 
+      thinkingConfig: { thinkingBudget: 0 },
+      response_mime_type: userInstruction ? "application/json" : "text/plain"
+    }
   };
   
   let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
   if (result.error) result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
   
-  const script = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-  return { script };
+  const raw = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+  if (userInstruction) {
+    try {
+      const parsed = JSON.parse(raw);
+      return { script: parsed.script, updatedMemory: parsed.updatedMemory };
+    } catch (e) {
+      return { script: raw.replace(/\{.*\}/g, '').trim() }; // Fallback to stripping JSON
+    }
+  }
+  return { script: raw };
 });
