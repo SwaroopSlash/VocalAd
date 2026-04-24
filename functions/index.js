@@ -321,7 +321,7 @@ exports.generateScript = onCall({
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to generate script.");
 
-  const { prompt, language, boliPrompt, lightweight } = request.data;
+  const { prompt, language, boliPrompt, lightweight, constraints, history, userInstruction, tone } = request.data;
   if (!prompt?.trim()) throw new HttpsError("invalid-argument", "Prompt is required.");
 
   const apiKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
@@ -344,20 +344,39 @@ exports.generateScript = onCall({
 
   const wordCount = prompt.trim().split(/\s+/).length;
   const targetWords = wordCount <= 10 ? 40 : Math.round(wordCount * 1.2);
-  const dialectLine = boliPrompt ? `\nDialect instruction: ${boliPrompt}` : '';
+  const dialectLine = boliPrompt ? `Dialect instruction: ${boliPrompt}` : '';
 
-  const fullPrompt = `You are an ad copywriter. Brief: "${prompt}". Language: ${language}.${dialectLine}\nWrite a spoken commercial script of approximately ${targetWords} words — containing ONLY words to be spoken aloud.\nYou MAY use these Gemini TTS expression tags sparingly: [excited], [serious], [whispers], [short pause], [medium pause], [curious], [laughs], [sighs].\nKeep all expression tags in English even if the script is in another language.\nNEVER include sound effects, music cues, physical actions, or scene directions.\nOutput the script only — no title, no labels, no explanation.`;
+  // Cumulative prompt — layers stack in priority order, userInstruction always last (LLMs weight recency)
+  const lines = [
+    `You are an expert Indian commercial voiceover scriptwriter.`,
+    `Style: High-energy Indian radio/TV commercial. Punchy, rhythmic, natural repetition for emphasis. Use TTS tags [excited], [short pause], [medium pause], [serious], [whispers], [laughs], [curious] frequently and naturally. Think "Tvara kara... abhi hi call karein..." voiceover energy — never flat prose.`,
+    `TTS tags must always stay in English even if the script is in another language.`,
+    `NEVER include sound effects, music cues, physical actions, or scene directions.`,
+    `Brief: "${prompt.trim()}"`,
+    language ? `Language: ${language} — write entirely in this language.` : '',
+    tone ? `Tone: ${tone}` : '',
+    dialectLine,
+    Array.isArray(constraints) && constraints.length ? `Requirements: ${constraints.join(' · ')}` : '',
+    Array.isArray(history) && history.length
+      ? `Already tried — these scripts were generated; explore completely different angles:\n${history.slice(-3).map((h, i) => `${i + 1}. "${String(h).substring(0, 100)}"`).join('\n')}`
+      : '',
+    `Write a spoken commercial script of approximately ${targetWords} words.`,
+    `Output the script only — no title, no labels, no explanation.`,
+    userInstruction?.trim()
+      ? `\n⚠ USER INSTRUCTION — highest priority, overrides everything above: "${userInstruction.trim()}"`
+      : '',
+  ].filter(Boolean).join('\n');
 
   // thinkingBudget: 0 disables chain-of-thought tokens on gemini-2.5-flash
   // Ad scripts don't need deep reasoning — cuts latency ~40%
   const payload = {
-    contents: [{ parts: [{ text: fullPrompt }] }],
+    contents: [{ parts: [{ text: lines }] }],
     generationConfig: { thinkingConfig: { thinkingBudget: 0 } }
   };
   let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
   if (result.error) {
     logger.warn("SCRIPT_PRIMARY_FAILED", { msg: result.error.message });
-    const fallbackPayload = { contents: [{ parts: [{ text: fullPrompt }] }] };
+    const fallbackPayload = { contents: [{ parts: [{ text: lines }] }] };
     result = await callGeminiRest(BRAIN_FALLBACK, fallbackPayload, apiKey);
     if (result.error) throw new HttpsError("internal", result.error.message);
   }

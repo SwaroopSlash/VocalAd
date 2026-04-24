@@ -160,6 +160,37 @@ const FILTERS = [
   { id: 'cinematic',label: 'Cinema',   css: 'contrast(1.12) saturate(0.78) brightness(0.94)' },
 ];
 
+const detectIntent = (text) => {
+  const result = {};
+  const langMap = [
+    { re: /\bmarathi\b/i, id: 'mr-IN' },
+    { re: /\bhindi\b/i, id: 'hi-IN' },
+    { re: /\bbengali\b/i, id: 'bn-IN' },
+    { re: /\btamil\b/i, id: 'ta-IN' },
+    { re: /\btelugu\b/i, id: 'te-IN' },
+    { re: /\bkannada\b/i, id: 'kn-IN' },
+    { re: /\bgujarati\b/i, id: 'gu-IN' },
+    { re: /\benglish\b/i, id: 'en-IN' },
+  ];
+  for (const { re, id } of langMap) {
+    if (re.test(text)) { result.language = LANGUAGES_LIST.find(l => l.id === id); break; }
+  }
+  const toneMap = [
+    { re: /\burgent|hurry|limited|sale|discount\b/i, tone: 'Urgent (Sale)' },
+    { re: /\bluxury|premium|exclusive|elite\b/i, tone: 'Luxury' },
+    { re: /\bwhisper|soft|gentle|calm\b/i, tone: 'Whispering' },
+    { re: /\bexcit|energetic|hype\b/i, tone: 'Excited' },
+    { re: /\bfriendly|approachable\b/i, tone: 'Friendly' },
+    { re: /\bprofessional|formal|corporate\b/i, tone: 'Professional' },
+    { re: /\bcheerful|happy|fun|playful\b/i, tone: 'Cheerful' },
+    { re: /\btrust|reliable|honest|sincere\b/i, tone: 'Trustworthy & Warm' },
+  ];
+  for (const { re, tone } of toneMap) {
+    if (re.test(text)) { result.tone = tone; break; }
+  }
+  return result;
+};
+
 const resizeIfNeeded = (dataUrl) => new Promise((resolve) => {
   const base64 = dataUrl.split(',')[1] || '';
   if (base64.length * 0.75 <= 5 * 1024 * 1024) { resolve(dataUrl); return; }
@@ -230,6 +261,9 @@ const App = () => {
   const [imageContext, setImageContext] = useState(null);
   const [showCustomThemeInput, setShowCustomThemeInput] = useState(false);
   const [customThemeInput, setCustomThemeInput] = useState('');
+  const [sessionCtx, setSessionCtx] = useState({ language: null, tone: null, constraints: [], history: [] });
+  const [intentToast, setIntentToast] = useState(null);
+  const [suggestionTapCount, setSuggestionTapCount] = useState(0);
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
@@ -308,10 +342,10 @@ const App = () => {
   useEffect(() => { audioTakesRef.current = audioTakes; }, [audioTakes]);
 
   useEffect(() => {
-    if (step === 2 && imageThemes.length > 0 && !themePickerDismissed) {
+    if (suggestionTapCount === 2 && imageThemes.length > 0 && !themePickerDismissed) {
       setShowThemePicker(true);
     }
-  }, [step, imageThemes.length, themePickerDismissed]);
+  }, [suggestionTapCount, imageThemes.length, themePickerDismissed]);
 
   useEffect(() => {
     if (!showThemePicker) { setShowCustomThemeInput(false); setCustomThemeInput(''); }
@@ -432,6 +466,8 @@ const App = () => {
             setShowThemePicker(false);
             setThemePickerDismissed(false);
             setImageContext(null);
+            setSessionCtx({ language: null, tone: null, constraints: [], history: [] });
+            setSuggestionTapCount(0);
           }
         }
         prevUserRef.current = { uid: u.uid, isAnonymous: u.isAnonymous };
@@ -505,7 +541,7 @@ const App = () => {
   };
 
   const handleSignOut = async () => {
-    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setImageThemes([]); setSelectedTheme(null); setShowThemePicker(false); setThemePickerDismissed(false); setImageContext(null); await signOut(auth); setShowProfileDropdown(false); }
+    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setImageThemes([]); setSelectedTheme(null); setShowThemePicker(false); setThemePickerDismissed(false); setImageContext(null); setSessionCtx({ language: null, tone: null, constraints: [], history: [] }); setSuggestionTapCount(0); await signOut(auth); setShowProfileDropdown(false); }
     catch (err) { console.error("Sign out failed", err); }
   };
 
@@ -579,6 +615,11 @@ const App = () => {
     return new Blob([buffer], { type: 'audio/wav' });
   };
 
+
+  const showIntentToast = (msg) => {
+    setIntentToast(msg);
+    setTimeout(() => setIntentToast(null), 3000);
+  };
 
   const handleConfigChange = (type, val) => {
     const isPremium = (type === 'lang' && LANGUAGES_LIST.find(l => l.id === val)?.premium) ||
@@ -1046,7 +1087,7 @@ const App = () => {
             document.body
           )}
 
-          {step === 2 && audioTakes.length > 0 && createPortal(
+          {step === 2 && audioTakes.length > 0 && !showThemePicker && createPortal(
             <div className="fixed bottom-0 left-0 right-0 z-[9999] px-4 pb-8 pt-16 pointer-events-none" style={{ background: 'linear-gradient(to top, rgba(2,6,23,0.97) 0%, rgba(2,6,23,0.85) 50%, transparent 100%)' }}>
               <div className="max-w-6xl mx-auto flex justify-between items-center pointer-events-auto">
                 <button onClick={() => setStep(1)} className="text-slate-400 font-black text-[10px] uppercase px-4 py-3">Back</button>
@@ -1118,24 +1159,44 @@ const App = () => {
                          {suggestions.length > 0 && <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{suggestionIdx + 1}/{suggestions.length} scripts</span>}
                        </div>
                      </div>
+                     {(sessionCtx.language || sessionCtx.tone || sessionCtx.constraints.length > 0) && (
+                       <div className="flex flex-wrap gap-1.5 px-2 pt-1">
+                         {sessionCtx.language && (
+                           <button onClick={() => setSessionCtx(prev => ({ ...prev, language: null }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-[9px] font-black uppercase tracking-wider hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
+                             🌐 {sessionCtx.language.label.split(' (')[0]} ×
+                           </button>
+                         )}
+                         {sessionCtx.tone && (
+                           <button onClick={() => setSessionCtx(prev => ({ ...prev, tone: null }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[9px] font-black uppercase tracking-wider hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
+                             ⚡ {sessionCtx.tone} ×
+                           </button>
+                         )}
+                         {sessionCtx.constraints.map((c, i) => (
+                           <button key={i} onClick={() => setSessionCtx(prev => ({ ...prev, constraints: prev.constraints.filter((_, j) => j !== i) }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-700/50 border border-white/10 text-slate-400 text-[9px] font-bold hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
+                             {c.length > 22 ? c.substring(0, 22) + '…' : c} ×
+                           </button>
+                         ))}
+                       </div>
+                     )}
                      {text.trim() && (
                        <div className="space-y-2 animate-in fade-in">
                          <div className="flex items-center justify-center gap-3">
                            <button disabled={isGeneratingSuggestion || suggestions.length >= 10} onClick={async () => {
+                             const newHistory = [...sessionCtx.history, text].slice(-6);
+                             setSessionCtx(prev => ({ ...prev, history: newHistory }));
+                             setSuggestionTapCount(prev => prev + 1);
                              setIsGeneratingSuggestion(true);
                              try {
-                               let s = '';
-                               if (imageContext) {
-                                 const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a fresh creative ad script for: "${imageContext}". Make it a different angle or hook from: "${text.substring(0, 120)}"`, language: selectedLanguage.label, boliPrompt: null });
-                                 s = r.data.script || '';
-                               } else if (imageScript && imageScript !== 'loading') {
-                                 // Re-use image concept as text context — never re-calls analyzeImage
-                                 const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a fresh creative ad script variation. Original image concept: "${imageScript.substring(0, 150)}". Make it a different angle or hook from: "${text.substring(0, 120)}"`, language: selectedLanguage.label, boliPrompt: null });
-                                 s = r.data.script || '';
-                               } else {
-                                 const r = await httpsCallable(functions, 'generateScript')({ prompt: `Write a fresh creative variation of this ad script with a different angle or hook: "${text}"`, language: selectedLanguage.label, boliPrompt: null });
-                                 s = r.data.script || '';
-                               }
+                               const brief = imageContext || (imageScript && imageScript !== 'loading' ? imageScript.substring(0, 150) : text.substring(0, 150));
+                               const r = await httpsCallable(functions, 'generateScript')({
+                                 prompt: brief,
+                                 language: (sessionCtx.language || selectedLanguage).label,
+                                 boliPrompt: null,
+                                 constraints: sessionCtx.constraints,
+                                 history: newHistory,
+                                 tone: sessionCtx.tone || selectedTone,
+                               });
+                               const s = r.data.script || '';
                                if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); }
                              } catch (e) {} finally { setIsGeneratingSuggestion(false); }
                            }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-300 text-[10px] font-black uppercase tracking-wider hover:border-white/25 disabled:opacity-40 transition-all">
@@ -1148,12 +1209,35 @@ const App = () => {
                          </div>
                          {showInstructions && (
                            <div className="flex gap-2 animate-in slide-in-from-top-2">
-                             <input value={instructionInput} onChange={e => setInstructionInput(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setShowInstructions(false); }} placeholder="e.g. make it shorter, add Puneri dialect, more urgency..." className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`} />
+                             <input value={instructionInput} onChange={e => setInstructionInput(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setShowInstructions(false); }} placeholder="e.g. write in Marathi, make it shorter, more urgency..." className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`} />
                              <button disabled={!instructionInput.trim() || isGeneratingSuggestion} onClick={async () => {
                                if (!instructionInput.trim()) return;
+                               const intent = detectIntent(instructionInput);
+                               let updatedCtx = { ...sessionCtx };
+                               if (intent.language) {
+                                 setSelectedLanguage(intent.language);
+                                 updatedCtx = { ...updatedCtx, language: intent.language };
+                                 showIntentToast(`✓ Writing in ${intent.language.label.split(' (')[0]} from now on`);
+                               }
+                               if (intent.tone) {
+                                 setSelectedTone(intent.tone);
+                                 updatedCtx = { ...updatedCtx, tone: intent.tone };
+                               }
+                               const newConstraint = instructionInput.trim();
+                               updatedCtx = { ...updatedCtx, constraints: [...updatedCtx.constraints, newConstraint].slice(-5) };
+                               setSessionCtx(updatedCtx);
                                setIsGeneratingSuggestion(true);
                                try {
-                                 const r = await httpsCallable(functions, 'generateScript')({ prompt: `Rewrite this ad script following this instruction: "${instructionInput}". Current script: "${text}"`, language: selectedLanguage.label, boliPrompt: null });
+                                 const brief = imageContext || (imageScript && imageScript !== 'loading' ? imageScript.substring(0, 150) : text.substring(0, 150));
+                                 const r = await httpsCallable(functions, 'generateScript')({
+                                   prompt: brief,
+                                   language: (updatedCtx.language || selectedLanguage).label,
+                                   boliPrompt: null,
+                                   constraints: updatedCtx.constraints,
+                                   history: updatedCtx.history,
+                                   tone: updatedCtx.tone || selectedTone,
+                                   userInstruction: newConstraint,
+                                 });
                                  const s = r.data.script || '';
                                  if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); setShowInstructions(false); setInstructionInput(''); }
                                } catch (e) {} finally { setIsGeneratingSuggestion(false); }
@@ -1357,6 +1441,14 @@ const App = () => {
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-white/10 rounded-2xl px-6 py-3 shadow-2xl animate-in slide-in-from-bottom-4 pointer-events-none">
           <p className="text-white text-xs font-black text-center whitespace-nowrap">{sessionToast}</p>
         </div>
+      )}
+      {intentToast && createPortal(
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-4 pointer-events-none">
+          <div className="bg-indigo-600 border border-indigo-400/30 rounded-full px-5 py-2.5 shadow-2xl shadow-indigo-900/50">
+            <p className="text-white text-[11px] font-black tracking-wide whitespace-nowrap">{intentToast}</p>
+          </div>
+        </div>,
+        document.body
       )}
 
       {showMixPopup && (() => {
