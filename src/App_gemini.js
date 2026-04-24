@@ -1020,6 +1020,10 @@ const App = () => {
                             setImageThemes(r.data.themes);
                             if (!adTopicRef.current) adTopicRef.current = r.data.themes[0].label;
                           }
+                          if (r.data.language) {
+                            const detectedLang = LANGUAGES_LIST.find(l => l.id.startsWith(r.data.language)) || selectedLanguage;
+                            setSessionCtx(prev => ({ ...prev, language: detectedLang }));
+                          }
                           if (r.data.primaryMemory) {
                             setSessionCtx(prev => ({ ...prev, primaryMemory: r.data.primaryMemory }));
                           }
@@ -1620,23 +1624,29 @@ const App = () => {
                       adTopicRef.current = theme.label;
                       setShowThemePicker(false);
                       setThemePickerDismissed(true);
-                      setSuggestions([]); setSuggestionIdx(-1); setText('');
                       if (i === 0 && imageScript && imageScript !== 'loading') {
                         setText(imageScript);
-                        setSuggestions([imageScript]);
-                        setSuggestionIdx(0);
+                        if (!suggestions.includes(imageScript)) {
+                          setSuggestions(prev => { const next = [...prev, imageScript]; setSuggestionIdx(next.length - 1); return next; });
+                        } else {
+                          setSuggestionIdx(suggestions.indexOf(imageScript));
+                        }
                       } else {
                         const savedText = text;
                         setImageScript('loading');
                         try {
-                          const r = await httpsCallable(functions, 'generateScript')({ prompt: theme.label, language: selectedLanguage.label, boliPrompt: null, primaryMemory: sessionCtx.primaryMemory });
-                          setImageScript(r.data.script || '');
+                          const r = await httpsCallable(functions, 'generateScript')({ prompt: theme.label, language: (sessionCtx.language || selectedLanguage).label, boliPrompt: null, primaryMemory: sessionCtx.primaryMemory });
+                          const s = r.data.script || '';
+                          setImageScript(s);
+                          if (s) {
+                            setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; });
+                            setText(s);
+                          }
                         } catch (_) {
                           setImageScript(''); setText(savedText);
                           setSelectedTheme(null); setImageContext(null); adTopicRef.current = null;
                         }
-                      }
-                    }} className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-white/15 bg-slate-900 text-slate-200 text-sm font-black hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-95 transition-all">
+                      }                    }} className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-white/15 bg-slate-900 text-slate-200 text-sm font-black hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-95 transition-all">
                       <span className="text-xl leading-none">{theme.emoji}</span>
                       <span>{theme.label}</span>
                     </button>

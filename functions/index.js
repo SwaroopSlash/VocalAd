@@ -276,19 +276,27 @@ exports.analyzeImage = onCall({
 
   const prompt = `You are a creative ad strategist. Analyze this image for an AI ad-making tool.
 
-If you clearly identify a product, service, brand, or commercial concept, extract a deep strategy object.
+Your goal is to perform a FULL VISUAL INVENTORY. This is the "Source of Truth" for all future ads.
+
+1. Extract visible text and brand names (ONLY if clearly legible).
+2. Identify the specific product/service.
+3. Determine "Visual Complexity": 
+   - LOW: Minimal text, simple scene (e.g. just a person, a landscape).
+   - HIGH: Detailed product, lots of visible text, complex features.
 
 RESPONSE SCHEMA (JSON):
 {
   "primaryMemory": {
-    "productName": "Explicit or inferred name",
-    "coreValueProp": "Main selling point",
-    "visualContext": "Scene description",
+    "productName": "Detailed name",
+    "coreValueProp": "Primary selling point",
+    "visualContext": "Deep description of scene/vibe",
     "targetAudience": "Who is this for?",
-    "detectedLanguage": "en-IN or hi-IN etc."
+    "extractedText": "All text found",
+    "detectedLanguage": "Full name",
+    "visualComplexity": "HIGH or LOW"
   },
   "themes": [{"emoji": "string", "label": "string"}],
-  "script": "Write a 30-40 word spoken commercial script for the FIRST theme.",
+  "script": "Write a spoken commercial script. If LOW complexity, keep it punchy (15-20 words). If HIGH, make it rich (50-60 words).",
   "language": "ISO code"
 }
 
@@ -350,15 +358,20 @@ exports.generateScript = onCall({
   }
 
   const wordCount = prompt.trim().split(/\s+/).length;
-  const targetWords = wordCount <= 10 ? 40 : Math.round(wordCount * 1.2);
+  // ADAPTIVE WORD COUNT: 
+  // Simple images (LOW) get short, punchy scripts (~20 words).
+  // Complex images (HIGH) get rich, detailed scripts (~50 words).
+  const baseWords = (primaryMemory?.visualComplexity === 'HIGH') ? 50 : 20;
+  const targetWords = wordCount <= 10 ? baseWords : Math.round(wordCount * 1.2);
   
   const contextAnchor = primaryMemory ? `
-BACKGROUND CONTEXT (DO NOT REPEAT LITERALLY, BUT USE AS SOURCE OF TRUTH):
+SOURCE OF TRUTH (STRICT GROUNDING):
 - Product: ${primaryMemory.productName}
-- Value Prop: ${primaryMemory.coreValueProp}
-- Scene: ${primaryMemory.visualContext}
-- Audience: ${primaryMemory.targetAudience}
-` : '';
+- Context: ${primaryMemory.visualContext}
+- Extracted Text: ${primaryMemory.extractedText || 'None'}
+- Complexity: ${primaryMemory.visualComplexity}
+
+STRICT RULE: Do NOT assume features or details not mentioned above. If complexity is LOW, keep script extremely brief and punchy.` : '';
 
   const lines = [
     `You are an expert Indian commercial voiceover scriptwriter.`,
