@@ -265,18 +265,8 @@ const App = () => {
   const touchStartXRef = useRef(null);
   const adTopicRef = useRef(null); // stores the ad topic (never the full script)
 
-  const [imageThemes, setImageThemes] = useState([]);
-  const [selectedTheme, setSelectedTheme] = useState(null);
-  const [showThemePicker, setShowThemePicker] = useState(false);
-  const [themePickerDismissed, setThemePickerDismissed] = useState(false);
-  const [imageContext, setImageContext] = useState(null);
-  const [showCustomThemeInput, setShowCustomThemeInput] = useState(false);
-  const [customThemeInput, setCustomThemeInput] = useState('');
   const [sessionCtx, setSessionCtx] = useState({ language: null, tone: null, constraints: [], history: [], primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null });
-  const [intentToast, setIntentToast] = useState(null);
-  const [suggestionTapCount, setSuggestionTapCount] = useState(0);
-  const [showNudgeSheet, setShowNudgeSheet] = useState(false);
-  const [nudgeAngles, setNudgeAngles] = useState([]);
+  const [instrToast, setInstrToast] = useState(null);
   const [analyzePhase, setAnalyzePhase] = useState(null); // 'reading' | 'scripting' | null
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
@@ -355,46 +345,10 @@ const App = () => {
   useEffect(() => { setError(null); }, [step]);
   useEffect(() => { audioTakesRef.current = audioTakes; }, [audioTakes]);
 
-  const upgradeConstraintLabel = async (text, index) => {
-    try {
-      const r = await httpsCallable(functions, 'generateScript')({
-        lightweight: true,
-        prompt: `Summarize this user instruction into a very concise 2-3 word label for a UI chip. Examples: "write in Hindi" -> "Hindi Script", "make it for kids" -> "Kids Version", "this is a Nilkamal product" -> "Nilkamal Product". Instruction: "${text}"`
-      });
-      const newLabel = r.data.script?.replace(/[".]/g, '') || summarizeConstraint(text);
-      setSessionCtx(prev => ({
-        ...prev,
-        constraints: prev.constraints.map((c, i) => i === index ? { ...c, label: newLabel } : c)
-      }));
-    } catch (e) { console.error("Label upgrade failed", e); }
+  const showInstrToast = (msg) => {
+    setInstrToast(msg);
+    setTimeout(() => setInstrToast(null), 3000);
   };
-
-  const fetchCreativeAngles = async () => {
-    try {
-      const r = await httpsCallable(functions, 'generateScript')({
-        lightweight: true,
-        prompt: `Based on the session history and constraints below, suggest 3 genuinely creative and distinct advertising "angles" or directions that haven't been explored yet.
-        Constraints: ${sessionCtx.constraints.map(c => c.text).join(' · ')}
-        History: ${sessionCtx.history.slice(-3).join(' | ')}
-
-        Return ONLY a JSON object: {"angles": [{"emoji": "string", "label": "string", "angle": "string"}]}
-        Label should be 2-3 words. Angle should be a short instruction for the AI.`
-      });
-      const data = JSON.parse(r.data.script);
-      if (data.angles) setNudgeAngles(data.angles);
-    } catch (e) { console.error("Angles fetch failed", e); }
-  };
-
-  useEffect(() => {
-    if (suggestionTapCount === 4 && !themePickerDismissed) {
-      fetchCreativeAngles();
-      setShowThemePicker(true);
-    }
-  }, [suggestionTapCount, themePickerDismissed]);
-
-  useEffect(() => {
-    if (!showThemePicker) { setShowCustomThemeInput(false); setCustomThemeInput(''); }
-  }, [showThemePicker]);
 
   useEffect(() => {
     if (imageScript && imageScript !== 'loading') {
@@ -448,15 +402,12 @@ const App = () => {
   const showUPIModalRef = React.useRef(false);
   const showAuthModalRef = React.useRef(false);
   const showMixPopupRef = React.useRef(false);
-  const showThemePickerRef = React.useRef(false);
   useEffect(() => { showUPIModalRef.current = showUPIModal; }, [showUPIModal]);
   useEffect(() => { showAuthModalRef.current = showAuthModal; }, [showAuthModal]);
   useEffect(() => { showMixPopupRef.current = showMixPopup; }, [showMixPopup]);
-  useEffect(() => { showThemePickerRef.current = showThemePicker; }, [showThemePicker]);
   useEffect(() => {
     try { window.history.replaceState({ step: 0 }, ''); } catch (_) {}
     const handlePop = (e) => {
-      if (showThemePickerRef.current) { setShowThemePicker(false); setThemePickerDismissed(true); window.history.pushState(window.history.state, ''); return; }
       if (showUPIModalRef.current) { setShowUPIModal(false); window.history.pushState(window.history.state, ''); return; }
       if (showAuthModalRef.current) { setShowAuthModal(false); setModalReason("limit"); window.history.pushState(window.history.state, ''); return; }
       if (showMixPopupRef.current) { setShowMixPopup(false); window.history.pushState(window.history.state, ''); return; }
@@ -506,13 +457,7 @@ const App = () => {
             setAudioTakes([]);
             setSelectedTakeIdx(0);
             setFinalVideoUrl(null);
-            setImageThemes([]);
-            setSelectedTheme(null);
-            setShowThemePicker(false);
-            setThemePickerDismissed(false);
-            setImageContext(null);
             setSessionCtx({ language: null, tone: null, constraints: [], history: [], primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null });
-            setSuggestionTapCount(0);
             adTopicRef.current = null;
           }
         }
@@ -587,7 +532,7 @@ const App = () => {
   };
 
   const handleSignOut = async () => {
-    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setImageThemes([]); setSelectedTheme(null); setShowThemePicker(false); setThemePickerDismissed(false); setImageContext(null); setSessionCtx({ language: null, tone: null, constraints: [], history: [], primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null }); setSuggestionTapCount(0); adTopicRef.current = null; await signOut(auth); setShowProfileDropdown(false); }
+    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setSessionCtx({ language: null, tone: null, constraints: [], history: [], primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null }); adTopicRef.current = null; await signOut(auth); setShowProfileDropdown(false); }
     catch (err) { console.error("Sign out failed", err); }
   };
 
@@ -662,10 +607,6 @@ const App = () => {
   };
 
 
-  const showIntentToast = (msg) => {
-    setIntentToast(msg);
-    setTimeout(() => setIntentToast(null), 3000);
-  };
 
   const handleConfigChange = (type, val) => {
     const isPremium = (type === 'lang' && LANGUAGES_LIST.find(l => l.id === val)?.premium) ||
@@ -1015,7 +956,6 @@ const App = () => {
                 const reader = new FileReader(); reader.onload = (ev) => {
                   const dataUrl = ev.target.result;
                   setImage(dataUrl); setStep(1); setSuggestions([]); setSuggestionIdx(-1); setText('');
-                  setImageThemes([]); setSelectedTheme(null); setImageContext(null); setThemePickerDismissed(false);
                   adTopicRef.current = null;
                   // Reset image-specific directives — new image = new campaign brief
                   setSessionCtx(prev => ({ ...prev, primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null }));
@@ -1026,9 +966,8 @@ const App = () => {
                       try {
                         const r = await httpsCallable(functions, 'analyzeImage')({ imageBase64: resizedImg });
 
-                        if (r.data.themes?.length) {
-                          setImageThemes(r.data.themes);
-                          if (!adTopicRef.current) adTopicRef.current = r.data.themes[0].label;
+                        if (r.data.themes?.length && !adTopicRef.current) {
+                          adTopicRef.current = r.data.themes[0].label;
                         }
 
                         // Derive language locally so second call uses it immediately
@@ -1180,7 +1119,7 @@ const App = () => {
             document.body
           )}
 
-          {step === 2 && audioTakes.length > 0 && !showThemePicker && createPortal(
+          {step === 2 && audioTakes.length > 0 && createPortal(
             <div className="fixed bottom-0 left-0 right-0 z-[9999] px-4 pb-8 pt-16 pointer-events-none" style={{ background: 'linear-gradient(to top, rgba(2,6,23,0.97) 0%, rgba(2,6,23,0.85) 50%, transparent 100%)' }}>
               <div className="max-w-6xl mx-auto flex justify-between items-center pointer-events-auto">
                 <button onClick={() => setStep(1)} className="text-slate-400 font-black text-[10px] uppercase px-4 py-3">Back</button>
@@ -1249,49 +1188,25 @@ const App = () => {
                        )}
                      </div>
                      <div className="flex items-center px-2 pt-1 gap-2">
-                       <div className="w-24 shrink-0">
-                         {selectedTheme && (
-                           <button onClick={() => setShowThemePicker(true)} className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors leading-tight">
-                             ↻ {selectedTheme.emoji} {selectedTheme.label}
-                           </button>
-                         )}
-                       </div>
                        <div className="flex-1 flex items-center justify-center gap-1.5">
                          {suggestions.length > 1 && suggestions.map((_, i) => (
                            <button key={i} onClick={() => { setSuggestionIdx(i); setText(suggestions[i]); }} className={`h-1.5 rounded-full transition-all duration-300 ${i === suggestionIdx ? 'bg-indigo-400 w-5' : 'bg-slate-700 w-1.5 hover:bg-slate-500'}`} />
                          ))}
                        </div>
                        <div className="w-24 shrink-0 text-right">
-                         {suggestions.length > 0 && <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{suggestionIdx + 1}/{suggestions.length} scripts</span>}
+                         {suggestions.length > 0 && <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{suggestionIdx + 1}/10 scripts</span>}
                        </div>
                      </div>
-                     {(sessionCtx.tone || sessionCtx.constraints.length > 0) && (
-                       <div className="flex flex-wrap gap-1.5 px-2 pt-1">
-                         {sessionCtx.tone && (
-                           <button onClick={() => setSessionCtx(prev => ({ ...prev, tone: null }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[9px] font-black uppercase tracking-wider hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
-                             ⚡ {sessionCtx.tone.replace(' (Sale)', '').replace(' & Warm', '')} ×
-                           </button>
-                         )}
-                         {sessionCtx.constraints.map((c, i) => (
-                           <button key={i} onClick={() => setSessionCtx(prev => ({ ...prev, constraints: prev.constraints.filter((_, j) => j !== i) }))} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/25 text-indigo-300 text-[9px] font-black uppercase tracking-wider hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-all">
-                             {c.label} ×
-                           </button>
-                         ))}
-                       </div>
-                     )}
                      {text.trim() && (
                        <div className="space-y-2 animate-in fade-in">
                          <div className="flex items-center justify-center gap-3">
                            <button disabled={isGeneratingSuggestion || suggestions.length >= 10} onClick={async () => {
                              const newHistory = [...sessionCtx.history, text].slice(-6);
                              setSessionCtx(prev => ({ ...prev, history: newHistory }));
-                             setSuggestionTapCount(prev => prev + 1);
                              setIsGeneratingSuggestion(true);
                              try {
                                if (!adTopicRef.current) {
-                                 adTopicRef.current = imageContext
-                                   || (imageThemes.length > 0 ? imageThemes[0].label : null)
-                                   || (text.trim().split(/\s+/).length <= 12 ? text.trim() : null);
+                                 adTopicRef.current = text.trim().split(/\s+/).length <= 12 ? text.trim() : null;
                                }
                                const brief = adTopicRef.current || "the advertised product";
                                const r = await httpsCallable(functions, 'generateScript')({
@@ -1323,27 +1238,30 @@ const App = () => {
                                if (!instructionInput.trim()) return;
                                const intent = detectIntent(instructionInput);
                                let updatedCtx = { ...sessionCtx };
+                               const toastParts = [];
                                if (intent.language) {
                                  setSelectedLanguage(intent.language);
                                  updatedCtx = { ...updatedCtx, language: intent.language };
-                                 showIntentToast(`✓ Writing in ${intent.language.label.split(' (')[0]} from now on`);
+                                 toastParts.push(intent.language.label.split(' (')[0]);
                                }
                                if (intent.tone) {
                                  setSelectedTone(intent.tone);
                                  updatedCtx = { ...updatedCtx, tone: intent.tone };
+                                 toastParts.push(intent.tone.replace(' (Sale)', '').replace(' & Warm', ''));
                                }
                                const constraintText = instructionInput.trim();
-                               const newConstraint = { text: constraintText, label: summarizeConstraint(constraintText) };
-                               const newIndex = updatedCtx.constraints.length;
-                               updatedCtx = { ...updatedCtx, constraints: [...updatedCtx.constraints, newConstraint].slice(-5) };
+                               const isDuplicate = updatedCtx.constraints.some(c => c.text.trim().toLowerCase() === constraintText.toLowerCase());
+                               if (!isDuplicate) {
+                                 const label = summarizeConstraint(constraintText);
+                                 toastParts.push(label);
+                                 updatedCtx = { ...updatedCtx, constraints: [...updatedCtx.constraints, { text: constraintText, label }].slice(-5) };
+                               }
                                setSessionCtx(updatedCtx);
-                               upgradeConstraintLabel(constraintText, newIndex);
+                               if (toastParts.length > 0) showInstrToast(`✓ ${toastParts.join(' · ')} — got it`);
                                setIsGeneratingSuggestion(true);
                                try {
                                  if (!adTopicRef.current) {
-                                   adTopicRef.current = imageContext
-                                     || (imageThemes.length > 0 ? imageThemes[0].label : null)
-                                     || (text.trim().split(/\s+/).length <= 12 ? text.trim() : null);
+                                   adTopicRef.current = text.trim().split(/\s+/).length <= 12 ? text.trim() : null;
                                  }
                                  const brief = adTopicRef.current || "the advertised product";
                                  const scriptContext = text.trim().split(/\s+/).length > 8
@@ -1579,10 +1497,10 @@ const App = () => {
           <p className="text-white text-xs font-black text-center whitespace-nowrap">{sessionToast}</p>
         </div>
       )}
-      {intentToast && createPortal(
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-4 pointer-events-none">
+      {instrToast && createPortal(
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-bottom-4 pointer-events-none">
           <div className="bg-indigo-600 border border-indigo-400/30 rounded-full px-5 py-2.5 shadow-2xl shadow-indigo-900/50">
-            <p className="text-white text-[11px] font-black tracking-wide whitespace-nowrap">{intentToast}</p>
+            <p className="text-white text-[11px] font-black tracking-wide whitespace-nowrap">{instrToast}</p>
           </div>
         </div>,
         document.body
@@ -1628,139 +1546,6 @@ const App = () => {
         );
       })()}
 
-      {showThemePicker && (imageThemes.length > 0 || nudgeAngles.length > 0) && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-end">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowThemePicker(false); setThemePickerDismissed(true); }} />
-          <div className="relative w-full max-w-2xl mx-auto bg-slate-950 border-t border-white/10 rounded-t-[2.5rem] p-6 pb-10 animate-in slide-in-from-bottom-6 shadow-2xl">
-            <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto mb-6" />
-
-            {suggestionTapCount >= 4 && nudgeAngles.length > 0 ? (
-              <>
-                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-1">Fresh Creative Angles</p>
-                <p className="text-xs text-slate-400 font-medium mb-5">Explore directions you haven't tried yet.</p>
-                <div className="flex flex-col gap-2 mb-5">
-                  {nudgeAngles.map((angle, i) => (
-                    <button key={i} onClick={async () => {
-                      setShowThemePicker(false);
-                      setThemePickerDismissed(true);
-                      setIsGeneratingSuggestion(true);
-                      const savedText = text;
-                      setText('');
-                      try {
-                        const r = await httpsCallable(functions, 'generateScript')({
-                          prompt: adTopicRef.current || "the product",
-                          language: (sessionCtx.language || selectedLanguage).label,
-                          constraints: sessionCtx.constraints.map(c => c.text),
-                          history: sessionCtx.history,
-                          tone: sessionCtx.tone || selectedTone,
-                          userInstruction: angle.angle,
-                          isCreativeAngle: true,
-                          primaryMemory: sessionCtx.primaryMemory,
-                          adDirective: sessionCtx.adDirective,
-                          energyShape: sessionCtx.energyShape,
-                          pausePoints: sessionCtx.pausePoints,
-                        });
-                        const s = r.data.script || '';
-                        if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); }
-                        else { setText(savedText); }
-                      } catch (e) { setText(savedText); } finally { setIsGeneratingSuggestion(false); }
-                    }} className="flex items-center gap-4 p-4 rounded-2xl border-2 border-white/10 bg-slate-900 text-left hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all group">
-                      <span className="text-2xl">{angle.emoji}</span>
-                      <div>
-                        <p className="text-sm font-black text-slate-200 group-hover:text-indigo-300 transition-colors">{angle.label}</p>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{angle.angle}</p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 ml-auto text-slate-700 group-hover:text-indigo-500 transition-colors" />
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Your image looks like...</p>
-                <p className="text-xs text-slate-400 font-medium mb-5">Pick a topic to get an instant focused script.</p>
-                <div className="flex flex-wrap gap-2 mb-5">
-                  {imageThemes.map((theme, i) => (
-                    <button key={i} onClick={async () => {
-                      setSelectedTheme(theme);
-                      setImageContext(theme.label);
-                      adTopicRef.current = theme.label;
-                      setShowThemePicker(false);
-                      setThemePickerDismissed(true);
-                      setSuggestions([]); setSuggestionIdx(-1); setText('');
-                      if (i === 0 && imageScript && imageScript !== 'loading') {
-                        setText(imageScript);
-                        setSuggestions([imageScript]);
-                        setSuggestionIdx(0);
-                      } else {
-                        const savedText = text;
-                        setImageScript('loading');
-                        try {
-                          const r = await httpsCallable(functions, 'generateScript')({ prompt: theme.label, language: (sessionCtx.language || selectedLanguage).label, primaryMemory: sessionCtx.primaryMemory, adDirective: sessionCtx.adDirective, energyShape: sessionCtx.energyShape, pausePoints: sessionCtx.pausePoints });
-                          setImageScript(r.data.script || '');
-                        } catch (_) {
-                          setImageScript(''); setText(savedText);
-                          setSelectedTheme(null); setImageContext(null); adTopicRef.current = null;
-                        }
-                      }
-                    }} className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-white/15 bg-slate-900 text-slate-200 text-sm font-black hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-95 transition-all">
-                      <span className="text-xl leading-none">{theme.emoji}</span>
-                      <span>{theme.label}</span>
-                    </button>
-                  ))}
-                  <button onClick={() => setShowCustomThemeInput(p => !p)} className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 text-sm font-black transition-all ${showCustomThemeInput ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300' : 'border-white/10 bg-slate-900 text-slate-500 hover:border-white/25'}`}>
-                    ✎ Something else...
-                  </button>
-                </div>
-                {showCustomThemeInput && (
-                  <div className="flex gap-2 mb-5 animate-in slide-in-from-top-2">
-                    <input
-                      autoFocus
-                      value={customThemeInput}
-                      onChange={e => setCustomThemeInput(e.target.value)}
-                      onKeyDown={async (e) => {
-                        if (e.key !== 'Enter' || !customThemeInput.trim()) return;
-                        const label = customThemeInput.trim();
-                        const custom = { emoji: '✏️', label };
-                        const savedText = text;
-                        setSelectedTheme(custom); setImageContext(label); adTopicRef.current = label;
-                        setShowThemePicker(false); setThemePickerDismissed(true);
-                        setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
-                        try {
-                          const r = await httpsCallable(functions, 'generateScript')({ prompt: label, language: (sessionCtx.language || selectedLanguage).label, primaryMemory: sessionCtx.primaryMemory, adDirective: sessionCtx.adDirective, energyShape: sessionCtx.energyShape, pausePoints: sessionCtx.pausePoints });
-                          setImageScript(r.data.script || '');
-                        } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); adTopicRef.current = null; }
-                      }}
-                      placeholder="e.g. festive offer, product launch, brand story..."
-                      className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`}
-                    />
-                    <button disabled={!customThemeInput.trim()} onClick={async () => {
-                      const label = customThemeInput.trim();
-                      if (!label) return;
-                      const custom = { emoji: '✏️', label };
-                      const savedText = text;
-                      setSelectedTheme(custom); setImageContext(label); adTopicRef.current = label;
-                      setShowThemePicker(false); setThemePickerDismissed(true);
-                      setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
-                      try {
-                        const r = await httpsCallable(functions, 'generateScript')({ prompt: label, language: (sessionCtx.language || selectedLanguage).label, primaryMemory: sessionCtx.primaryMemory, adDirective: sessionCtx.adDirective, energyShape: sessionCtx.energyShape, pausePoints: sessionCtx.pausePoints });
-                        setImageScript(r.data.script || '');
-                      } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); adTopicRef.current = null; }
-                    }} className={`px-4 py-3 rounded-2xl font-black text-sm disabled:opacity-40 transition-all ${t.accent}`}>→</button>
-                  </div>
-                )}
-              </>
-            )}
-
-            <div className="flex justify-end">
-              <button onClick={() => { setShowThemePicker(false); setThemePickerDismissed(true); }} className="text-[10px] font-black uppercase tracking-widest text-slate-600 hover:text-slate-400 transition-colors">
-                Skip → use current script
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 };
