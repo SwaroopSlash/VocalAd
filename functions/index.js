@@ -431,6 +431,7 @@ Do NOT fall back to generic advertising style. Every line must serve this angle.
     angleBlock,
     Array.isArray(constraints) && constraints.length ? `REQUIREMENTS: ${constraints.join(' · ')}` : '',
     `STRUCTURE: Hook (grab attention) → Build (facts/emotion) → Peak (key message) → CTA (clear action).`,
+    `CLOSING RULE: The final line must be a short punchy brand statement or CTA — 4 to 8 words max. Make it land hard. The kind of line people remember.`,
     `Write a spoken campaign script (~${targetWords} words). Natural spoken rhythm. No stage directions.`,
     wantsJson
       ? `Return JSON: {"script": "the script text", "updatedMemory": {"hardFacts": {"key": "value"}}}. Include updatedMemory ONLY if user explicitly stated a NEW hard fact (price, contact, offer). NEVER include brandName or productName in updatedMemory.`

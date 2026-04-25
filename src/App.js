@@ -1180,11 +1180,6 @@ const App = () => {
                           imageScript === 'loading' ? "✦ Analyzing your image..." :
                           "Type ad text here..."
                         } />
-                       {instrToast && (
-                         <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none animate-in fade-in">
-                           <span className="text-[10px] font-black text-slate-400 tracking-wide">{instrToast}</span>
-                         </div>
-                       )}
                        {suggestions.length > 1 && suggestionIdx < suggestions.length - 1 && (
                          <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-slate-950/80 to-transparent pointer-events-none rounded-r-[2rem]" />
                        )}
@@ -1192,6 +1187,9 @@ const App = () => {
                          <div className="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-slate-950/80 to-transparent pointer-events-none rounded-l-[2rem]" />
                        )}
                      </div>
+                     {instrToast && (
+                       <p className="text-center text-[10px] font-black text-slate-400 tracking-wide px-2 animate-in fade-in">{instrToast}</p>
+                     )}
                      <div className="flex items-center px-2 pt-1 gap-2">
                        <div className="flex-1 flex items-center justify-center gap-1.5">
                          {suggestions.length > 1 && suggestions.map((_, i) => (
