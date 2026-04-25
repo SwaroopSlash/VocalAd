@@ -204,7 +204,7 @@ exports.generateVoice = onCall({
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to generate voice.");
 
-  const { text, voiceName, tone, speed } = request.data;
+  const { text, voiceName, tone, speed, adDirective, energyShape, pausePoints } = request.data;
   if (!text?.trim()) throw new HttpsError("invalid-argument", "Script text is required.");
 
   const voiceKey = (process.env.GEMINI_VOICE_API_KEY || "").trim();
@@ -228,7 +228,10 @@ exports.generateVoice = onCall({
     }
   }
 
-  const ttsPrompt = `Deliver in a ${tone} tone, ${speed}:\n${scriptToSpeak}`;
+  const performanceBlock = (adDirective || energyShape || pausePoints)
+    ? `VOICE PERFORMANCE INSTRUCTIONS:\n${adDirective || ''}\n${energyShape ? `Energy arc: ${energyShape}` : ''}\n${pausePoints ? `Pause strategy: ${pausePoints}` : ''}\n\n`
+    : '';
+  const ttsPrompt = `${performanceBlock}Deliver in a ${tone} tone, ${speed}:\n${scriptToSpeak}`;
   const ttsPayload = {
     contents: [{ parts: [{ text: ttsPrompt }] }],
     generationConfig: {
@@ -257,7 +260,7 @@ exports.analyzeImage = onCall({
   cors: true,
   region: "us-central1",
   secrets: ["GEMINI_BRAIN_API_KEY"],
-  timeoutSeconds: 30,
+  timeoutSeconds: 45,
   memory: "256MiB"
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to analyze image.");
@@ -274,33 +277,46 @@ exports.analyzeImage = onCall({
   const BRAIN_MODEL = "gemini-2.5-flash";
   const BRAIN_FALLBACK = "gemini-2.0-flash";
 
-  const prompt = `You are a Principal AI Strategist. Perform a forensic analysis of this image.
+  const prompt = `You are a Principal Campaign Strategist and Creative Director for audio advertising.
 
-1. CATEGORIZE: Identify the Campaign Type (e.g., Political Election, Retail Sale, Event Invite, Brand Story).
-2. EXTRACT HARD FACTS: Find and list every specific detail: Brand/Name, Discount %, Price, Phone Numbers, Address, Dates.
-3. DETECT LANGUAGE: Identify the primary language of the text.
+Analyze this image and produce TWO things: raw facts, and a creative performance brief.
 
-RESPONSE SCHEMA (STRICT JSON):
+━━ PART 1: FACT EXTRACTION ━━
+Extract every objective detail visible: brand name, product, price, offers, contact, address, dates, slogans.
+
+━━ PART 2: CREATIVE DIRECTION ━━
+Write a natural language performance brief for a voiceover scriptwriter — specific to THIS image.
+Do not use generic templates or category labels. Write it as a creative director briefing a voice actor.
+Examples of good adDirective:
+- "Cricket team victory poster — open with stadium crowd energy, build to the team's achievement, close with a rallying chant CTA. Rhythm should feel like a stadium announcer."
+- "Luxury perfume — slow burn whisper opening, build through aspiration, brand name reveal at the emotional peak, close with quiet confidence."
+- "Wedding invitation — warm and celebratory, storytelling tone, names revealed mid-script, close with a joyful call to join."
+- "Flash sale — explosive opening, rapid-fire offer listing, urgency all the way, hard CTA at the end."
+
+IMPORTANT: Every image has a voice. If not commercial, reframe as announcement / celebration / storytelling audio. Never skip.
+
+RESPONSE SCHEMA (STRICT JSON, no markdown):
 {
   "primaryMemory": {
-    "campaignType": "e.g. Political/Retail",
-    "brandName": "Name or 'Unknown'",
+    "campaignType": "describe naturally, e.g. 'cricket victory celebration' or 'flash sale'",
+    "brandName": "brand or person name, or 'Unknown'",
+    "productName": "product or event name, or 'Unknown'",
     "hardFacts": {
-      "offers": "e.g. 50% off",
-      "contact": "Phone/Email",
-      "location": "Address",
-      "specifics": "Any other key labels"
+      "offers": "discount or offer if visible, else null",
+      "contact": "phone/email if visible, else null",
+      "location": "address if visible, else null",
+      "price": "price if visible, else null",
+      "specifics": "any other key visible facts, else null"
     },
-    "visualVibe": "Description of scene",
-    "complexity": "HIGH/LOW",
-    "detectedLanguage": "Full language name"
+    "visualVibe": "1-sentence description of visual mood and energy",
+    "complexity": "HIGH if many facts or emotional depth, LOW if simple"
   },
-  "themes": [{"emoji": "string", "label": "string"}],
-  "script": "Write a 40-50 word script using ALL Hard Facts extracted above.",
-  "language": "ISO code"
-}
-
-If the image is not commercial, output: {"skip": true}`;
+  "adDirective": "Your specific, image-driven creative brief. 1-3 sentences. No templates.",
+  "energyShape": "Energy arc in one line. E.g. 'explosive open, sustained excitement, triumphant close'",
+  "pausePoints": "2-3 natural pause moments in plain language. E.g. 'after opening hook, before price reveal, before final CTA'",
+  "themes": [{"emoji": "emoji", "label": "2-3 word topic label"}],
+  "language": "ISO 639-1 code of primary text language"
+}`;
 
   const payload = {
     contents: [{ parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] }],
@@ -317,14 +333,15 @@ If the image is not commercial, output: {"skip": true}`;
     if (!raw) return { themes: [], script: null };
     
     const parsed = JSON.parse(raw);
-    if (parsed.skip) return { themes: [], script: null };
-    
-    logger.info("IMAGE_ANALYZED_V3", { uid: request.auth.uid, product: parsed.primaryMemory?.productName });
-    return { 
-      themes: parsed.themes || [], 
-      script: parsed.script, 
+
+    logger.info("IMAGE_ANALYZED_V4", { uid: request.auth.uid, brand: parsed.primaryMemory?.brandName, directive: parsed.adDirective?.substring(0, 60) });
+    return {
+      themes: parsed.themes || [],
       language: parsed.language || 'en',
-      primaryMemory: parsed.primaryMemory 
+      primaryMemory: parsed.primaryMemory || null,
+      adDirective: parsed.adDirective || null,
+      energyShape: parsed.energyShape || null,
+      pausePoints: parsed.pausePoints || null,
     };
   } catch (e) {
     logger.warn("IMAGE_ANALYSIS_FAILED", { msg: e.message, uid: request.auth.uid });
@@ -341,7 +358,7 @@ exports.generateScript = onCall({
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in to generate script.");
 
-  const { prompt, language, boliPrompt, lightweight, constraints, history, userInstruction, tone, primaryMemory } = request.data;
+  const { prompt, language, boliPrompt, lightweight, constraints, history, userInstruction, isCreativeAngle, tone, primaryMemory, adDirective, energyShape, pausePoints } = request.data;
   if (!prompt?.trim()) throw new HttpsError("invalid-argument", "Prompt is required.");
 
   const apiKey = (process.env.GEMINI_BRAIN_API_KEY || "").trim();
@@ -357,51 +374,86 @@ exports.generateScript = onCall({
     return { script };
   }
 
+  // Word count target — driven by complexity and fact density
   const wordCount = prompt.trim().split(/\s+/).length;
-  const baseWords = (primaryMemory?.complexity === 'HIGH') ? 50 : 25;
+  const baseWords = (primaryMemory?.complexity === 'HIGH') ? 55 : 30;
   const targetWords = wordCount <= 10 ? baseWords : Math.round(wordCount * 1.2);
-  
-  const contextAnchor = primaryMemory ? `
-CORE AD MEMORY (SOURCE OF TRUTH):
-- CAMPAIGN: ${primaryMemory.campaignType}
-- BRAND: ${primaryMemory.brandName}
-- HARD FACTS: ${JSON.stringify(primaryMemory.hardFacts)}
-- VIBE: ${primaryMemory.visualVibe}
 
-STRICT RULE: Include ALL hard facts naturally.
+  // ── LAYER 1: FACTS (IMMUTABLE GROUND TRUTH) ──────────────────────────────
+  const hardFactsBlock = primaryMemory ? `
+━━ HARD FACTS — IMMUTABLE GROUND TRUTH ━━
+BRAND: ${primaryMemory.brandName || 'Unknown'}
+CAMPAIGN: ${primaryMemory.campaignType || 'Unknown'}
+FACTS: ${JSON.stringify(primaryMemory.hardFacts)}
+VIBE: ${primaryMemory.visualVibe || ''}
+RULES: Include ALL non-null facts. NEVER modify, invent, or omit any fact. NEVER change the brand name or price.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` : '';
 
+  // ── LAYER 2: PERFORMANCE DIRECTIVE (HOW TO PERFORM) ──────────────────────
+  const directiveBlock = (adDirective || energyShape || pausePoints) ? `
+PERFORMANCE DIRECTIVE:
+${adDirective ? `Creative Brief: ${adDirective}` : ''}
+${energyShape ? `Energy Arc: ${energyShape}` : ''}
+${pausePoints ? `Pause Strategy: ${pausePoints}` : ''}
+` : '';
+
+  // ── LAYER 3: ITERATION INTELLIGENCE ──────────────────────────────────────
+  const iterationBlock = Array.isArray(history) && history.length > 0 ? `
+PREVIOUS SCRIPTS (do not repeat these):
+${history.slice(-3).map((s, i) => `[${i + 1}] ${String(s).substring(0, 100)}...`).join('\n')}
+GOAL: Generate something distinctly BETTER — stronger opening hook, sharper emotional peak, cleaner CTA.
+` : '';
+
+  // ── LAYER 4: CREATIVE ANGLE ENFORCEMENT ──────────────────────────────────
+  const angleBlock = isCreativeAngle && userInstruction ? `
+⚡ CREATIVE ANGLE — MANDATORY:
+This script MUST strictly execute this creative direction: "${userInstruction.trim()}"
+Do NOT fall back to generic advertising style. Every line must serve this angle.
+` : '';
+
+  // Only return JSON (with updatedMemory) for regular user instructions, not creative angles
+  const wantsJson = !!(userInstruction && !isCreativeAngle);
+
   const lines = [
-    `You are an expert Indian commercial voiceover scriptwriter.`,
-    `TTS TAGS — REQUIRED: Use [excited], [laughs], [short pause], [medium pause], [curious], [whispers], [serious], [sighs].`,
+    `You are an expert Indian ad campaign scriptwriter and voiceover director.`,
+    `TTS TAGS — PLACE STRATEGICALLY (not randomly):`,
+    `  [excited] at energy peaks · [short pause] before price or key reveal · [medium pause] for dramatic breath`,
+    `  [whispers] for intimate moments · [serious] for authority · [curious] for hooks · [sighs] for emotion`,
     language ? `LANGUAGE: Write ONLY in ${language}.` : '',
-    tone ? `Tone: ${tone}` : '',
-    contextAnchor,
-    `Current Angle: "${prompt.trim()}"`,
-    userInstruction ? `\n⚠ USER INSTRUCTION (SUPREME PRIORITY): "${userInstruction.trim()}"\nIf the user instruction changes a brand name, phone, or fact, RECONCILE the memory.` : '',
-    Array.isArray(constraints) && constraints.length ? `Requirements: ${constraints.join(' · ')}` : '',
-    `Write a spoken commercial script (~${targetWords} words).`,
-    userInstruction ? `Since there is a User Instruction, return a JSON object: {"script": "the text", "updatedMemory": {"brandName": "...", "hardFacts": {"offers": "...", "contact": "..."}}}. Only include fields that CHANGED.` : `OUTPUT ONLY THE SCRIPT TEXT. No JSON.`
+    tone ? `TONE: ${tone}` : '',
+    hardFactsBlock,
+    directiveBlock,
+    iterationBlock,
+    `SUBJECT: "${prompt.trim()}"`,
+    !isCreativeAngle && userInstruction ? `\n⚠ USER INSTRUCTION (TOP PRIORITY): "${userInstruction.trim()}"` : '',
+    angleBlock,
+    Array.isArray(constraints) && constraints.length ? `REQUIREMENTS: ${constraints.join(' · ')}` : '',
+    `STRUCTURE: Hook (grab attention) → Build (facts/emotion) → Peak (key message) → CTA (clear action).`,
+    `Write a spoken campaign script (~${targetWords} words). Natural spoken rhythm. No stage directions.`,
+    wantsJson
+      ? `Return JSON: {"script": "the script text", "updatedMemory": {"hardFacts": {"key": "value"}}}. Include updatedMemory ONLY if user explicitly stated a NEW hard fact (price, contact, offer). NEVER include brandName or productName in updatedMemory.`
+      : `OUTPUT ONLY THE SCRIPT TEXT. No JSON. No labels. No quotes.`
   ].filter(Boolean).join('\n');
 
   const payload = {
     contents: [{ parts: [{ text: lines }] }],
-    generationConfig: { 
+    generationConfig: {
       thinkingConfig: { thinkingBudget: 0 },
-      response_mime_type: userInstruction ? "application/json" : "text/plain"
+      response_mime_type: wantsJson ? "application/json" : "text/plain"
     }
   };
-  
+
   let result = await callGeminiRest(BRAIN_MODEL, payload, apiKey);
   if (result.error) result = await callGeminiRest(BRAIN_FALLBACK, payload, apiKey);
-  
+
   const raw = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-  if (userInstruction) {
+  if (wantsJson) {
     try {
       const parsed = JSON.parse(raw);
       return { script: parsed.script, updatedMemory: parsed.updatedMemory };
     } catch (e) {
-      return { script: raw.replace(/\{.*\}/g, '').trim() }; // Fallback to stripping JSON
+      return { script: raw.replace(/^\s*\{[\s\S]*\}\s*$/, '').trim() || raw };
     }
   }
   return { script: raw };

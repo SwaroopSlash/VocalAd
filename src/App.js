@@ -272,11 +272,12 @@ const App = () => {
   const [imageContext, setImageContext] = useState(null);
   const [showCustomThemeInput, setShowCustomThemeInput] = useState(false);
   const [customThemeInput, setCustomThemeInput] = useState('');
-  const [sessionCtx, setSessionCtx] = useState({ language: null, tone: null, constraints: [], history: [] });
+  const [sessionCtx, setSessionCtx] = useState({ language: null, tone: null, constraints: [], history: [], primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null });
   const [intentToast, setIntentToast] = useState(null);
   const [suggestionTapCount, setSuggestionTapCount] = useState(0);
   const [showNudgeSheet, setShowNudgeSheet] = useState(false);
   const [nudgeAngles, setNudgeAngles] = useState([]);
+  const [analyzePhase, setAnalyzePhase] = useState(null); // 'reading' | 'scripting' | null
   
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
@@ -354,11 +355,42 @@ const App = () => {
   useEffect(() => { setError(null); }, [step]);
   useEffect(() => { audioTakesRef.current = audioTakes; }, [audioTakes]);
 
+  const upgradeConstraintLabel = async (text, index) => {
+    try {
+      const r = await httpsCallable(functions, 'generateScript')({
+        lightweight: true,
+        prompt: `Summarize this user instruction into a very concise 2-3 word label for a UI chip. Examples: "write in Hindi" -> "Hindi Script", "make it for kids" -> "Kids Version", "this is a Nilkamal product" -> "Nilkamal Product". Instruction: "${text}"`
+      });
+      const newLabel = r.data.script?.replace(/[".]/g, '') || summarizeConstraint(text);
+      setSessionCtx(prev => ({
+        ...prev,
+        constraints: prev.constraints.map((c, i) => i === index ? { ...c, label: newLabel } : c)
+      }));
+    } catch (e) { console.error("Label upgrade failed", e); }
+  };
+
+  const fetchCreativeAngles = async () => {
+    try {
+      const r = await httpsCallable(functions, 'generateScript')({
+        lightweight: true,
+        prompt: `Based on the session history and constraints below, suggest 3 genuinely creative and distinct advertising "angles" or directions that haven't been explored yet.
+        Constraints: ${sessionCtx.constraints.map(c => c.text).join(' · ')}
+        History: ${sessionCtx.history.slice(-3).join(' | ')}
+
+        Return ONLY a JSON object: {"angles": [{"emoji": "string", "label": "string", "angle": "string"}]}
+        Label should be 2-3 words. Angle should be a short instruction for the AI.`
+      });
+      const data = JSON.parse(r.data.script);
+      if (data.angles) setNudgeAngles(data.angles);
+    } catch (e) { console.error("Angles fetch failed", e); }
+  };
+
   useEffect(() => {
-    if (suggestionTapCount === 2 && imageThemes.length > 0 && !themePickerDismissed) {
+    if (suggestionTapCount === 4 && !themePickerDismissed) {
+      fetchCreativeAngles();
       setShowThemePicker(true);
     }
-  }, [suggestionTapCount, imageThemes.length, themePickerDismissed]);
+  }, [suggestionTapCount, themePickerDismissed]);
 
   useEffect(() => {
     if (!showThemePicker) { setShowCustomThemeInput(false); setCustomThemeInput(''); }
@@ -479,7 +511,7 @@ const App = () => {
             setShowThemePicker(false);
             setThemePickerDismissed(false);
             setImageContext(null);
-            setSessionCtx({ language: null, tone: null, constraints: [], history: [] });
+            setSessionCtx({ language: null, tone: null, constraints: [], history: [], primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null });
             setSuggestionTapCount(0);
             adTopicRef.current = null;
           }
@@ -555,7 +587,7 @@ const App = () => {
   };
 
   const handleSignOut = async () => {
-    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setImageThemes([]); setSelectedTheme(null); setShowThemePicker(false); setThemePickerDismissed(false); setImageContext(null); setSessionCtx({ language: null, tone: null, constraints: [], history: [] }); setSuggestionTapCount(0); adTopicRef.current = null; await signOut(auth); setShowProfileDropdown(false); }
+    try { setLocalVoiceCount(0); setAudioTakes([]); setSelectedTakeIdx(0); setFinalVideoUrl(null); setImage(null); setImageScript(null); setSuggestions([]); setSuggestionIdx(-1); setStep(0); setModalReason("limit"); setShowAuthModal(false); setImageThemes([]); setSelectedTheme(null); setShowThemePicker(false); setThemePickerDismissed(false); setImageContext(null); setSessionCtx({ language: null, tone: null, constraints: [], history: [], primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null }); setSuggestionTapCount(0); adTopicRef.current = null; await signOut(auth); setShowProfileDropdown(false); }
     catch (err) { console.error("Sign out failed", err); }
   };
 
@@ -666,7 +698,10 @@ const App = () => {
         text: text.trim(),
         voiceName: selectedVoice,
         tone: selectedTone,
-        speed: selectedSpeed.instruction
+        speed: selectedSpeed.instruction,
+        adDirective: sessionCtx.adDirective,
+        energyShape: sessionCtx.energyShape,
+        pausePoints: sessionCtx.pausePoints,
       });
       clearInterval(progressInterval);
       const { audioBase64, mimeType } = result.data;
@@ -982,19 +1017,56 @@ const App = () => {
                   setImage(dataUrl); setStep(1); setSuggestions([]); setSuggestionIdx(-1); setText('');
                   setImageThemes([]); setSelectedTheme(null); setImageContext(null); setThemePickerDismissed(false);
                   adTopicRef.current = null;
+                  // Reset image-specific directives — new image = new campaign brief
+                  setSessionCtx(prev => ({ ...prev, primaryMemory: null, adDirective: null, energyShape: null, pausePoints: null }));
                   if (!isVideo) {
                     setImageScript('loading');
-                    resizeIfNeeded(dataUrl).then(img =>
-                      httpsCallable(functions, 'analyzeImage')({ imageBase64: img })
-                        .then(r => {
-                          if (r.data.themes?.length) {
-                            setImageThemes(r.data.themes);
-                            if (!adTopicRef.current) adTopicRef.current = r.data.themes[0].label;
-                          }
-                          setImageScript(r.data.script || '');
-                        })
-                        .catch(() => setImageScript(''))
-                    );
+                    setAnalyzePhase('reading');
+                    resizeIfNeeded(dataUrl).then(async (resizedImg) => {
+                      try {
+                        const r = await httpsCallable(functions, 'analyzeImage')({ imageBase64: resizedImg });
+
+                        if (r.data.themes?.length) {
+                          setImageThemes(r.data.themes);
+                          if (!adTopicRef.current) adTopicRef.current = r.data.themes[0].label;
+                        }
+
+                        // Derive language locally so second call uses it immediately
+                        let langForScript = selectedLanguage;
+                        if (r.data.language) {
+                          const detectedLang = LANGUAGES_LIST.find(l => l.id.startsWith(r.data.language)) || selectedLanguage;
+                          setSelectedLanguage(detectedLang);
+                          langForScript = detectedLang;
+                        }
+
+                        // Store all directive + memory fields together
+                        setSessionCtx(prev => ({
+                          ...prev,
+                          ...(langForScript !== selectedLanguage ? { language: langForScript } : {}),
+                          primaryMemory: r.data.primaryMemory || null,
+                          adDirective: r.data.adDirective || null,
+                          energyShape: r.data.energyShape || null,
+                          pausePoints: r.data.pausePoints || null,
+                        }));
+
+                        // Phase 2 — route first script through generateScript
+                        setAnalyzePhase('scripting');
+                        const brief = adTopicRef.current || r.data.primaryMemory?.brandName || 'the product';
+                        const scriptResult = await httpsCallable(functions, 'generateScript')({
+                          prompt: brief,
+                          language: langForScript.label,
+                          primaryMemory: r.data.primaryMemory,
+                          adDirective: r.data.adDirective,
+                          energyShape: r.data.energyShape,
+                          pausePoints: r.data.pausePoints,
+                        });
+                        setImageScript(scriptResult.data.script || '');
+                        setAnalyzePhase(null);
+                      } catch (e) {
+                        setImageScript('');
+                        setAnalyzePhase(null);
+                      }
+                    });
                   }
                 }; reader.readAsDataURL(file);
               }} />
@@ -1163,7 +1235,12 @@ const App = () => {
                          touchStartXRef.current = null;
                        }}
                      >
-                       <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={imageScript === 'loading' ? "✦ Analyzing your image..." : "Type ad text here..."} />
+                       <textarea className={`w-full p-6 md:p-8 h-48 border-2 rounded-[2rem] focus:border-indigo-500 outline-none transition-all text-base md:text-lg font-medium shadow-inner ${t.input} ${imageScript === 'loading' ? 'border-indigo-500/40 animate-pulse' : ''}`} value={text} onChange={(e) => setText(e.target.value)} placeholder={
+                          analyzePhase === 'reading' ? "✦ Reading your image..." :
+                          analyzePhase === 'scripting' ? "✦ Writing your campaign script..." :
+                          imageScript === 'loading' ? "✦ Analyzing your image..." :
+                          "Type ad text here..."
+                        } />
                        {suggestions.length > 1 && suggestionIdx < suggestions.length - 1 && (
                          <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-slate-950/80 to-transparent pointer-events-none rounded-r-[2rem]" />
                        )}
@@ -1220,10 +1297,13 @@ const App = () => {
                                const r = await httpsCallable(functions, 'generateScript')({
                                  prompt: brief,
                                  language: (sessionCtx.language || selectedLanguage).label,
-                                 boliPrompt: null,
                                  constraints: sessionCtx.constraints.map(c => c.text),
                                  history: newHistory,
                                  tone: sessionCtx.tone || selectedTone,
+                                 primaryMemory: sessionCtx.primaryMemory,
+                                 adDirective: sessionCtx.adDirective,
+                                 energyShape: sessionCtx.energyShape,
+                                 pausePoints: sessionCtx.pausePoints,
                                });
                                const s = r.data.script || '';
                                if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); }
@@ -1254,8 +1334,10 @@ const App = () => {
                                }
                                const constraintText = instructionInput.trim();
                                const newConstraint = { text: constraintText, label: summarizeConstraint(constraintText) };
+                               const newIndex = updatedCtx.constraints.length;
                                updatedCtx = { ...updatedCtx, constraints: [...updatedCtx.constraints, newConstraint].slice(-5) };
                                setSessionCtx(updatedCtx);
+                               upgradeConstraintLabel(constraintText, newIndex);
                                setIsGeneratingSuggestion(true);
                                try {
                                  if (!adTopicRef.current) {
@@ -1270,14 +1352,31 @@ const App = () => {
                                  const r = await httpsCallable(functions, 'generateScript')({
                                    prompt: brief,
                                    language: (updatedCtx.language || selectedLanguage).label,
-                                   boliPrompt: null,
                                    constraints: updatedCtx.constraints.map(c => c.text),
                                    history: updatedCtx.history,
                                    tone: updatedCtx.tone || selectedTone,
                                    userInstruction: `${constraintText}${scriptContext}`,
+                                   primaryMemory: updatedCtx.primaryMemory,
+                                   adDirective: sessionCtx.adDirective,
+                                   energyShape: sessionCtx.energyShape,
+                                   pausePoints: sessionCtx.pausePoints,
                                  });
                                  const s = r.data.script || '';
-                                 if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); setShowInstructions(false); setInstructionInput(''); }
+                                 if (s) {
+                                   setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; });
+                                   setText(s);
+                                   // Only merge hardFacts — never overwrite brandName or productName
+                                   if (r.data.updatedMemory?.hardFacts) {
+                                     setSessionCtx(prev => ({
+                                       ...prev,
+                                       primaryMemory: {
+                                         ...prev.primaryMemory,
+                                         hardFacts: { ...prev.primaryMemory?.hardFacts, ...r.data.updatedMemory.hardFacts }
+                                       }
+                                     }));
+                                   }
+                                   setShowInstructions(false); setInstructionInput('');
+                                 }
                                } catch (e) {} finally { setIsGeneratingSuggestion(false); }
                              }} className={`px-4 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-40 transition-all ${t.accent}`}>
                                {isGeneratingSuggestion ? <RefreshCw className="w-4 h-4 animate-spin" /> : '→'}
@@ -1529,86 +1628,130 @@ const App = () => {
         );
       })()}
 
-      {showThemePicker && imageThemes.length > 0 && createPortal(
+      {showThemePicker && (imageThemes.length > 0 || nudgeAngles.length > 0) && createPortal(
         <div className="fixed inset-0 z-[200] flex items-end">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowThemePicker(false); setThemePickerDismissed(true); }} />
           <div className="relative w-full max-w-2xl mx-auto bg-slate-950 border-t border-white/10 rounded-t-[2.5rem] p-6 pb-10 animate-in slide-in-from-bottom-6 shadow-2xl">
             <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto mb-6" />
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Your image looks like...</p>
-            <p className="text-xs text-slate-400 font-medium mb-5">Pick a topic to get an instant focused script.</p>
-            <div className="flex flex-wrap gap-2 mb-5">
-              {imageThemes.map((theme, i) => (
-                <button key={i} onClick={async () => {
-                  setSelectedTheme(theme);
-                  setImageContext(theme.label);
-                  adTopicRef.current = theme.label;
-                  setShowThemePicker(false);
-                  setThemePickerDismissed(true);
-                  // Always clear previous suggestions — they belonged to a different theme context
-                  setSuggestions([]); setSuggestionIdx(-1); setText('');
-                  if (i === 0 && imageScript && imageScript !== 'loading') {
-                    // Theme 0: analyzeImage already returned a script for this — use it directly
-                    setText(imageScript);
-                    setSuggestions([imageScript]);
-                    setSuggestionIdx(0);
-                  } else {
-                    // Other themes: generate fresh script, restore state on failure
-                    const savedText = text;
-                    setImageScript('loading');
-                    try {
-                      const r = await httpsCallable(functions, 'generateScript')({ prompt: theme.label, language: selectedLanguage.label, boliPrompt: null });
-                      setImageScript(r.data.script || '');
-                    } catch (_) {
-                      setImageScript(''); setText(savedText);
-                      setSelectedTheme(null); setImageContext(null); adTopicRef.current = null;
-                    }
-                  }
-                }} className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-white/15 bg-slate-900 text-slate-200 text-sm font-black hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-95 transition-all">
-                  <span className="text-xl leading-none">{theme.emoji}</span>
-                  <span>{theme.label}</span>
-                </button>
-              ))}
-              <button onClick={() => setShowCustomThemeInput(p => !p)} className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 text-sm font-black transition-all ${showCustomThemeInput ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300' : 'border-white/10 bg-slate-900 text-slate-500 hover:border-white/25'}`}>
-                ✎ Something else...
-              </button>
-            </div>
-            {showCustomThemeInput && (
-              <div className="flex gap-2 mb-5 animate-in slide-in-from-top-2">
-                <input
-                  autoFocus
-                  value={customThemeInput}
-                  onChange={e => setCustomThemeInput(e.target.value)}
-                  onKeyDown={async (e) => {
-                    if (e.key !== 'Enter' || !customThemeInput.trim()) return;
-                    const label = customThemeInput.trim();
-                    const custom = { emoji: '✏️', label };
-                    const savedText = text;
-                    setSelectedTheme(custom); setImageContext(label); adTopicRef.current = label;
-                    setShowThemePicker(false); setThemePickerDismissed(true);
-                    setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
-                    try {
-                      const r = await httpsCallable(functions, 'generateScript')({ prompt: label, language: selectedLanguage.label, boliPrompt: null });
-                      setImageScript(r.data.script || '');
-                    } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); adTopicRef.current = null; }
-                  }}
-                  placeholder="e.g. festive offer, product launch, brand story..."
-                  className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`}
-                />
-                <button disabled={!customThemeInput.trim()} onClick={async () => {
-                  const label = customThemeInput.trim();
-                  if (!label) return;
-                  const custom = { emoji: '✏️', label };
-                  const savedText = text;
-                  setSelectedTheme(custom); setImageContext(label); adTopicRef.current = label;
-                  setShowThemePicker(false); setThemePickerDismissed(true);
-                  setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
-                  try {
-                    const r = await httpsCallable(functions, 'generateScript')({ prompt: label, language: selectedLanguage.label, boliPrompt: null });
-                    setImageScript(r.data.script || '');
-                  } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); adTopicRef.current = null; }
-                }} className={`px-4 py-3 rounded-2xl font-black text-sm disabled:opacity-40 transition-all ${t.accent}`}>→</button>
-              </div>
+
+            {suggestionTapCount >= 4 && nudgeAngles.length > 0 ? (
+              <>
+                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-1">Fresh Creative Angles</p>
+                <p className="text-xs text-slate-400 font-medium mb-5">Explore directions you haven't tried yet.</p>
+                <div className="flex flex-col gap-2 mb-5">
+                  {nudgeAngles.map((angle, i) => (
+                    <button key={i} onClick={async () => {
+                      setShowThemePicker(false);
+                      setThemePickerDismissed(true);
+                      setIsGeneratingSuggestion(true);
+                      const savedText = text;
+                      setText('');
+                      try {
+                        const r = await httpsCallable(functions, 'generateScript')({
+                          prompt: adTopicRef.current || "the product",
+                          language: (sessionCtx.language || selectedLanguage).label,
+                          constraints: sessionCtx.constraints.map(c => c.text),
+                          history: sessionCtx.history,
+                          tone: sessionCtx.tone || selectedTone,
+                          userInstruction: angle.angle,
+                          isCreativeAngle: true,
+                          primaryMemory: sessionCtx.primaryMemory,
+                          adDirective: sessionCtx.adDirective,
+                          energyShape: sessionCtx.energyShape,
+                          pausePoints: sessionCtx.pausePoints,
+                        });
+                        const s = r.data.script || '';
+                        if (s) { setSuggestions(prev => { const next = [...prev, s]; setSuggestionIdx(next.length - 1); return next; }); setText(s); }
+                        else { setText(savedText); }
+                      } catch (e) { setText(savedText); } finally { setIsGeneratingSuggestion(false); }
+                    }} className="flex items-center gap-4 p-4 rounded-2xl border-2 border-white/10 bg-slate-900 text-left hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all group">
+                      <span className="text-2xl">{angle.emoji}</span>
+                      <div>
+                        <p className="text-sm font-black text-slate-200 group-hover:text-indigo-300 transition-colors">{angle.label}</p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{angle.angle}</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 ml-auto text-slate-700 group-hover:text-indigo-500 transition-colors" />
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Your image looks like...</p>
+                <p className="text-xs text-slate-400 font-medium mb-5">Pick a topic to get an instant focused script.</p>
+                <div className="flex flex-wrap gap-2 mb-5">
+                  {imageThemes.map((theme, i) => (
+                    <button key={i} onClick={async () => {
+                      setSelectedTheme(theme);
+                      setImageContext(theme.label);
+                      adTopicRef.current = theme.label;
+                      setShowThemePicker(false);
+                      setThemePickerDismissed(true);
+                      setSuggestions([]); setSuggestionIdx(-1); setText('');
+                      if (i === 0 && imageScript && imageScript !== 'loading') {
+                        setText(imageScript);
+                        setSuggestions([imageScript]);
+                        setSuggestionIdx(0);
+                      } else {
+                        const savedText = text;
+                        setImageScript('loading');
+                        try {
+                          const r = await httpsCallable(functions, 'generateScript')({ prompt: theme.label, language: (sessionCtx.language || selectedLanguage).label, primaryMemory: sessionCtx.primaryMemory, adDirective: sessionCtx.adDirective, energyShape: sessionCtx.energyShape, pausePoints: sessionCtx.pausePoints });
+                          setImageScript(r.data.script || '');
+                        } catch (_) {
+                          setImageScript(''); setText(savedText);
+                          setSelectedTheme(null); setImageContext(null); adTopicRef.current = null;
+                        }
+                      }
+                    }} className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-white/15 bg-slate-900 text-slate-200 text-sm font-black hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-95 transition-all">
+                      <span className="text-xl leading-none">{theme.emoji}</span>
+                      <span>{theme.label}</span>
+                    </button>
+                  ))}
+                  <button onClick={() => setShowCustomThemeInput(p => !p)} className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 text-sm font-black transition-all ${showCustomThemeInput ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300' : 'border-white/10 bg-slate-900 text-slate-500 hover:border-white/25'}`}>
+                    ✎ Something else...
+                  </button>
+                </div>
+                {showCustomThemeInput && (
+                  <div className="flex gap-2 mb-5 animate-in slide-in-from-top-2">
+                    <input
+                      autoFocus
+                      value={customThemeInput}
+                      onChange={e => setCustomThemeInput(e.target.value)}
+                      onKeyDown={async (e) => {
+                        if (e.key !== 'Enter' || !customThemeInput.trim()) return;
+                        const label = customThemeInput.trim();
+                        const custom = { emoji: '✏️', label };
+                        const savedText = text;
+                        setSelectedTheme(custom); setImageContext(label); adTopicRef.current = label;
+                        setShowThemePicker(false); setThemePickerDismissed(true);
+                        setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
+                        try {
+                          const r = await httpsCallable(functions, 'generateScript')({ prompt: label, language: (sessionCtx.language || selectedLanguage).label, primaryMemory: sessionCtx.primaryMemory, adDirective: sessionCtx.adDirective, energyShape: sessionCtx.energyShape, pausePoints: sessionCtx.pausePoints });
+                          setImageScript(r.data.script || '');
+                        } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); adTopicRef.current = null; }
+                      }}
+                      placeholder="e.g. festive offer, product launch, brand story..."
+                      className={`flex-1 px-4 py-3 text-sm border-2 rounded-2xl outline-none focus:border-indigo-500 transition-all ${t.input}`}
+                    />
+                    <button disabled={!customThemeInput.trim()} onClick={async () => {
+                      const label = customThemeInput.trim();
+                      if (!label) return;
+                      const custom = { emoji: '✏️', label };
+                      const savedText = text;
+                      setSelectedTheme(custom); setImageContext(label); adTopicRef.current = label;
+                      setShowThemePicker(false); setThemePickerDismissed(true);
+                      setText(''); setSuggestions([]); setSuggestionIdx(-1); setImageScript('loading');
+                      try {
+                        const r = await httpsCallable(functions, 'generateScript')({ prompt: label, language: (sessionCtx.language || selectedLanguage).label, primaryMemory: sessionCtx.primaryMemory, adDirective: sessionCtx.adDirective, energyShape: sessionCtx.energyShape, pausePoints: sessionCtx.pausePoints });
+                        setImageScript(r.data.script || '');
+                      } catch (_) { setImageScript(''); setText(savedText); setSelectedTheme(null); setImageContext(null); adTopicRef.current = null; }
+                    }} className={`px-4 py-3 rounded-2xl font-black text-sm disabled:opacity-40 transition-all ${t.accent}`}>→</button>
+                  </div>
+                )}
+              </>
             )}
+
             <div className="flex justify-end">
               <button onClick={() => { setShowThemePicker(false); setThemePickerDismissed(true); }} className="text-[10px] font-black uppercase tracking-widest text-slate-600 hover:text-slate-400 transition-colors">
                 Skip → use current script
