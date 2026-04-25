@@ -1180,6 +1180,11 @@ const App = () => {
                           imageScript === 'loading' ? "✦ Analyzing your image..." :
                           "Type ad text here..."
                         } />
+                       {instrToast && (
+                         <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none animate-in fade-in">
+                           <span className="text-[10px] font-black text-slate-400 tracking-wide">{instrToast}</span>
+                         </div>
+                       )}
                        {suggestions.length > 1 && suggestionIdx < suggestions.length - 1 && (
                          <div className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-slate-950/80 to-transparent pointer-events-none rounded-r-[2rem]" />
                        )}
@@ -1496,14 +1501,6 @@ const App = () => {
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-white/10 rounded-2xl px-6 py-3 shadow-2xl animate-in slide-in-from-bottom-4 pointer-events-none">
           <p className="text-white text-xs font-black text-center whitespace-nowrap">{sessionToast}</p>
         </div>
-      )}
-      {instrToast && createPortal(
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-bottom-4 pointer-events-none">
-          <div className="bg-indigo-600 border border-indigo-400/30 rounded-full px-5 py-2.5 shadow-2xl shadow-indigo-900/50">
-            <p className="text-white text-[11px] font-black tracking-wide whitespace-nowrap">{instrToast}</p>
-          </div>
-        </div>,
-        document.body
       )}
 
       {showMixPopup && (() => {

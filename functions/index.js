@@ -402,7 +402,8 @@ ${pausePoints ? `Pause Strategy: ${pausePoints}` : ''}
   const iterationBlock = Array.isArray(history) && history.length > 0 ? `
 PREVIOUS SCRIPTS (do not repeat these):
 ${history.slice(-3).map((s, i) => `[${i + 1}] ${String(s).substring(0, 100)}...`).join('\n')}
-GOAL: Generate something distinctly BETTER — stronger opening hook, sharper emotional peak, cleaner CTA.
+GOAL: Generate something DISTINCTLY DIFFERENT — new opening hook, different emotional angle, fresh CTA phrasing.
+RULES: Do NOT reuse the same opening word, sentence structure, or hook pattern from any previous script above.
 ` : '';
 
   // ── LAYER 4: CREATIVE ANGLE ENFORCEMENT ──────────────────────────────────
@@ -439,6 +440,7 @@ Do NOT fall back to generic advertising style. Every line must serve this angle.
   const payload = {
     contents: [{ parts: [{ text: lines }] }],
     generationConfig: {
+      temperature: 1.3,
       thinkingConfig: { thinkingBudget: 0 },
       response_mime_type: wantsJson ? "application/json" : "text/plain"
     }
